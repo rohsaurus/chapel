@@ -3590,7 +3590,14 @@ static void createPrimitiveIE(int accessType,
   repl->insertAtTail(indexIterator);
   repl->insertAtTail(A);
   repl->insertAtTail(B);
-  repl->insertAtTail(call->copy());
+  // In the simple case of A[B[i]], we want to add B[i] so we can use it
+  // in our calls to inspect/execute access. However, we also allow for 
+  // something like A[B[i] + j]. In that case, the index we want to pass
+  // into inspect/execute access is B[i]+j. So instead of just adding "call"
+  // to the primitive, we add the first argument to parentCall, which will be
+  // all the "stuff" used to index into A.
+  CallExpr *tempParent = toCallExpr(parentCall);
+  repl->insertAtTail(tempParent->get(1)->copy());
   repl->insertAtTail(new_IntSymbol(loopIteratorSyms.size()));
   for (auto &elem : loopIteratorSyms) {
     Symbol *sym = elem.first.first;
@@ -3781,7 +3788,8 @@ static void generateInspectorExecutorLoops(ForallStmt* forall)
       collectSymExprs(thisParentCall, symexprs);
       for (auto &symexpr : symexprs) {
         if (Symbol *sym = symexpr->symbol()) {
-          if (sym != A && sym != B) {
+          // Ignore literals
+          if (sym != A && sym != B && !sym->isImmediate()) {
             forall->optInfo.ieIndexSymbols.insert(sym);
           }
         }
@@ -4149,11 +4157,9 @@ static void replaceIteratorWithInspectorIterator(ForallStmt *inspectorLoop)
 
     2.) If step (1) tells us the optimization is invalid, we need to go back
         and set staticCheckCall() to false. This effectively removes the optimization.
-        We also then need to change the PRIM_MAYBE_IRREG_ACCESS back to something that
-        the compiler can continue with. Normally, we'd revert it back to A[B[i]], but
-        we don't carry that with us into the primitive. So we just revert it to B[i].
-        It doesn't matter what we revert it to because the entire optimization/loop will
-        be removed later.
+        We also then need to change the PRIM_MAYBE_IRREG_ACCESS back to A[B[i]]. We
+        have the symbol A in the primitive, and we have the index used to access A
+        (#12 above, B[i] in the simple case but it could be something like B[i]+j).
 
     3.) If step (1) tells us the optimizaiton is valid, we process the primitive
         based on whether it is part of the inspector or executor loop. The end
@@ -4638,6 +4644,8 @@ static CallExpr *processInspectorAccess(CallExpr *call)
   // Pull out the args we'll need
   int64_t forallID;
   get_int(toSymExpr(call->get(6)), &forallID);
+  // Simple base, BCall is just B[i] from A[B[i]]. But in general
+  // it was a CallExpr that was the entire index expression into A.
   Expr *BCall = call->get(13)->remove();
 
   // Get the enclosing forall
@@ -4691,6 +4699,8 @@ static CallExpr *processExecutorAccess(CallExpr *call)
   Symbol *indexIterator = toSymExpr(call->get(10))->symbol();
   Symbol *A = toSymExpr(call->get(11))->symbol();
   Symbol *B = toSymExpr(call->get(12))->symbol();
+  // Simple base, BCall is just B[i] from A[B[i]]. But in general
+  // it was a CallExpr that was the entire index expression into A. 
   Expr *BCall = call->get(13)->remove();
 
 
@@ -4783,18 +4793,6 @@ static CallExpr *processExecutorAccess(CallExpr *call)
 /*
     Change the MAYBE_IRREG_ACCESS primitive to A[B[i]]. 
 
-    Ideally, we would have access to the actual A[B[i]] call, but including it
-    as well as B[i] (which we definitely need in prefolding) causes performance
-    issues. I think the redundant inclusion of B[i] in both B[i] and A[B[i]]
-    was creating some weird false sharing problems.
-
-    Since this entire optimization will be eliminated anyways, we just need to
-    return something that will allow the compiler to proceed to post resolution,
-    where the entire forall will be removed. So just create a new call that uses
-    B[i] as an index in the symbol A. This is not the same original access in the
-    case where we had something like A[B[i]+j], since we don't have the "+j" part.
-    But again, it doesn't matter.
-
     This is called when we determine that the primitive is not valid for the
     optimization.
 
@@ -4811,6 +4809,8 @@ static CallExpr *revertPrimitiveIE(CallExpr *call)
   get_int(toSymExpr(call->get(5)), &accessType);
   get_int(toSymExpr(call->get(6)), &forallID);
   Symbol *A = toSymExpr(call->get(11))->symbol();
+  // Simple base, BCall is just B[i] from A[B[i]]. But in general
+  // it was a CallExpr that was the entire index expression into A.
   Expr *BCall = call->get(13)->remove();
 
   if (fReportIrregArrayAccesses) {
@@ -9756,7 +9756,8 @@ static void updateLoopIndexVariableARP(ForallStmt *forall,
   Symbol *parentCallBase = getCallBase(candidate.parentCall); 
   for (auto &symexpr : symexprs) {
     if (Symbol *sym = symexpr->symbol()) {
-      if (sym != callBase && sym != parentCallBase) {
+      // Ignore literals
+      if (sym != callBase && sym != parentCallBase && !sym->isImmediate()) {
         candidate.prefetchIndexSymbols.insert(sym);
       }
     }
