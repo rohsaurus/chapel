@@ -127,6 +127,21 @@ public:
   CallExpr*              blockInfoGet()                      const override;
   CallExpr*              blockInfoSet(CallExpr* expr)              override;
 
+  // added by tbrolin 02/24/2022
+  // Analog to forall loops.
+  // NOTE: These are not copied over whenever the loop is
+  // copied. We use them as part of the inspector-executor
+  // optimization when the access of interest is in a for-loop
+  // that is within the forall. Ultimately, we'll throw them into the
+  // forall->optInfo structure if we need them post-normalization.
+  std::vector< std::vector<Symbol *> > multiDIndices;
+  std::vector<SymExpr *> indexVars;
+  std::vector<Symbol *>  iterSym;
+  std::vector<Expr *>    dotDomIterExpr;
+  std::vector<Symbol *>  dotDomIterSym;
+  std::vector<Symbol *>  dotDomIterSymDom;
+  bool forLoopInfoGathered;
+
 private:
                          ForLoop();
 

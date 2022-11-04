@@ -971,6 +971,13 @@ initPrimitive() {
   prim_def(PRIM_MAYBE_LOCAL_ARR_ELEM, "may be local array element", returnInfoUnknown);
   prim_def(PRIM_MAYBE_AGGREGATE_ASSIGN, "may be aggregated assignment", returnInfoUnknown);
 
+  // Added by tbrolin 1/11/2022
+  prim_def(PRIM_MAYBE_IRREG_ACCESS, "may be irregular access", returnInfoUnknown);
+  // Added by tbrolin 07/07/2022
+  prim_def(PRIM_MAYBE_IRREG_AGGREGATE_WRITE, "may be irregular aggregated write", returnInfoUnknown);
+  // Added by tbrolin 09/21/2022
+  prim_def(PRIM_MAYBE_PREFETCH_CANDIDATE, "may be candidate for prefetching", returnInfoUnknown);
+
   prim_def(PRIM_ERROR, "error", returnInfoVoid, true);
   prim_def(PRIM_WARNING, "warning", returnInfoVoid, true);
   prim_def(PRIM_WHEN, "when case expressions", returnInfoVoid);

@@ -1,0 +1,17 @@
+gmake[2]: Entering directory `/rhome/tbrolin/REPOS/chapel/test/release/examples/benchmarks/inspector-executor/IE_SMALL_TESTS/src/OPT_IS_NOT_VALID'
+gmake[2]: Leaving directory `/rhome/tbrolin/REPOS/chapel/test/release/examples/benchmarks/inspector-executor/IE_SMALL_TESTS/src/OPT_IS_NOT_VALID'
++ [INSPECTOR-EXECUTOR] Considering candidate irregular access at ie_test_A_refInLoop.chpl:28 (forall at ie_test_A_refInLoop.chpl:25)
+	- Parent: A2, Call: B
+		 !!! A2 cannot be defined inside of the forall
++ [ADAPTIVE REMOTE PREFETCH] Considering candidate irregular access at ie_test_A_refInLoop.chpl:28 (forall at ie_test_A_refInLoop.chpl:25)
+	- Parent: A2, Call: B
+		- enclosing loop(s) have valid structure
+
++ [ADAPTIVE REMOTE PREFETCH] Pre-Folding Analyzing candidate #1 in forall #0
+	- candidate is valid
++ [ADAPTIVE REMOTE PREFETCH] Pre-Folding Analysis Complete
+
++ [ADAPTIVE REMOTE PREFETCH] Post Analysis for adaptive remote prefetching candidates
+	- Analyzing candidate #1 in forall #0
+		- candidate is valid
++ [ADAPTIVE REMOTE PREFETCH] Post Analysis for adaptive remote prefetching complete

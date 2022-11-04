@@ -1,0 +1,53 @@
+gmake[2]: Entering directory `/rhome/tbrolin/REPOS/chapel/test/release/examples/benchmarks/inspector-executor/IE_SMALL_TESTS/src/OPT_IS_VALID'
+gmake[2]: Leaving directory `/rhome/tbrolin/REPOS/chapel/test/release/examples/benchmarks/inspector-executor/IE_SMALL_TESTS/src/OPT_IS_VALID'
++ [INSPECTOR-EXECUTOR] Considering candidate irregular access at ie_test_FUNC_main.chpl:25 (forall at ie_test_FUNC_main.chpl:24)
+	- Parent: A, Call: B
+		- index iterator B is defined outside of the loop
+		- Candidate is valid thus far
++ [ADAPTIVE REMOTE PREFETCH] Considering candidate irregular access at ie_test_FUNC_main.chpl:25 (forall at ie_test_FUNC_main.chpl:24)
+	- Parent: A, Call: B
+		- enclosing loop(s) have valid structure
+
++ [INSPECTOR-EXECUTOR] Pre-Folding Analyzing candidate at ie_test_FUNC_main.chpl:24: parent -> A, call -> B, access type -> INSPECTOR
+	- A and B are arrays
+	- A supports the localSubdomain() query
+	- forall is iterating over a distributed domain/array
+	- index iterator B is an array or domain
+	- loop iterator B is an array or domain
+	- A's element type is POD
+	- $$$ Optimization VALID at Pre-Folding; replacing primitive with inspectAccess()
+### [INSPECTOR-EXECUTOR] Pre-Folding Analysis Complete ###
+
++ [INSPECTOR-EXECUTOR] Pre-Folding Analyzing candidate at ie_test_FUNC_main.chpl:24: parent -> A, call -> B access type -> EXECUTOR
+	- $$$ Optimization VALID at Pre-Folding; replacing primitive with executeAccess()
+### [INSPECTOR-EXECUTOR] Pre-Folding Analysis Complete ###
+
++ [ADAPTIVE REMOTE PREFETCH] Pre-Folding Analyzing candidate #1 in forall #1
+	- candidate is valid
++ [ADAPTIVE REMOTE PREFETCH] Pre-Folding Analysis Complete
+
++ [ADAPTIVE REMOTE PREFETCH] Pre-Folding Analyzing candidate #1 in forall #0
+	- candidate is valid
++ [ADAPTIVE REMOTE PREFETCH] Pre-Folding Analysis Complete
+
++ [ADAPTIVE REMOTE PREFETCH] Post Analysis for adaptive remote prefetching candidates
+	- Analyzing candidate #1 in forall #1
+		- candidate is valid
+	- Analyzing candidate #1 in forall #0
+		- candidate is valid
++ [ADAPTIVE REMOTE PREFETCH] Post Analysis for adaptive remote prefetching complete
+
++ [INSPECTOR-EXECUTOR] Looking for cycles in the function call graph
+	- Processing forall at ie_test_FUNC_main.chpl:24
+		- No cycles found
+
++ [INSPECTOR-EXECUTOR] Performing write/modification analysis for inspector-executor
+	- Processing forall at ie_test_FUNC_main.chpl:24
+		- checking for invalid modifications to A, B, their domains, the forall domain and index iterators
+		- $$$ Optimization is VALID
+		- Adding calls to inspectorOn() after modifications to arrays/domains of interest
+
++ [INSPECTOR-EXECUTOR] Performing call path analysis for inspector-executor
+	- Processing forall at ie_test_FUNC_main.chpl:24
+		- Inserting calls to set/unset call-path flags at runtime for forall at ie_test_FUNC_main.chpl:24
+### [INSPECTOR-EXECUTOR] Post Analysis Complete ###

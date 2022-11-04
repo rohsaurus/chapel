@@ -1,0 +1,26 @@
+inspector on
+inspector on
+inspector on
+inspector on
+inspector on
+inspector on
+inspector on
+inspector on
+setHasOuterLoop for functionID=1
+1.0 1.0 1.0 1.0
+3.0 3.0 3.0 3.0
+6.0 6.0 6.0 6.0
+unsetHasOuterLoop for functionID=1
+inspector on
+inspector on
+inspector on
+inspector on
+inspector on
+inspector on
+inspector on
+inspector on
+setHasOuterLoop for functionID=2
+1 1 1 1
+3 3 3 3
+6 6 6 6
+unsetHasOuterLoop for functionID=2

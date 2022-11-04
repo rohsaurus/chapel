@@ -1,0 +1,35 @@
+gmake[2]: Entering directory '/lus/scratch/e63179/REPOS/chapel/test/release/examples/benchmarks/inspector-executor/IE_SMALL_TESTS/src/OPT_IS_VALID'
+gmake[2]: Leaving directory '/lus/scratch/e63179/REPOS/chapel/test/release/examples/benchmarks/inspector-executor/IE_SMALL_TESTS/src/OPT_IS_VALID'
++ [INSPECTOR-EXECUTOR] Considering candidate irregular access at ie_test_A_readFrom.chpl:39 (forall at ie_test_A_readFrom.chpl:37)
+	- Parent: A, Call: B
+		- index iterator B is defined outside of the loop
+		- Candidate is valid thus far
++ [IRREG WRITE AGGR] Considering candidate irregular access at ie_test_A_readFrom.chpl:39 (forall at ie_test_A_readFrom.chpl:37)
+	- Parent: A, Call: B
+		 !!! irregular access is not on LHS of operation
+
++ [INSPECTOR-EXECUTOR] Pre-Folding Analyzing candidate at ie_test_A_readFrom.chpl:37: parent -> A, call -> B, access type -> INSPECTOR
+	- A and B are arrays
+	- A supports the localSubdomain() query
+	- forall is iterating over a distributed domain/array
+	- index iterator B is an array or domain
+	- loop iterator B is an array or domain
+	- A's element type is POD
+	- forall is nested in an outer serial loop
+	- $$$ Optimization VALID at Pre-Folding; replacing primitive with inspectAccess()
+### [INSPECTOR-EXECUTOR] Pre-Folding Analysis Complete ###
+
++ [INSPECTOR-EXECUTOR] Pre-Folding Analyzing candidate at ie_test_A_readFrom.chpl:37: parent -> A, call -> B access type -> EXECUTOR
+	- $$$ Optimization VALID at Pre-Folding; replacing primitive with executeAccess()
+### [INSPECTOR-EXECUTOR] Pre-Folding Analysis Complete ###
+
++ [INSPECTOR-EXECUTOR] Looking for cycles in the function call graph
+
++ [INSPECTOR-EXECUTOR] Performing write/modification analysis for inspector-executor
+	- Processing forall at ie_test_A_readFrom.chpl:37
+		- checking for invalid modifications to A, B, their domains, the forall domain and index iterators
+		- $$$ Optimization is VALID
+		- Adding calls to inspectorOn() after modifications to arrays/domains of interest
+
++ [INSPECTOR-EXECUTOR] Performing call path analysis for inspector-executor
+### [INSPECTOR-EXECUTOR] Post Analysis Complete ###

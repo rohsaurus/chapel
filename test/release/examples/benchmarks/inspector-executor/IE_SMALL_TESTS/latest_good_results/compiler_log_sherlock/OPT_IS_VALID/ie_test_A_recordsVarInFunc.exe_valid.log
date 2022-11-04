@@ -1,0 +1,49 @@
+gmake[2]: Entering directory `/rhome/tbrolin/REPOS/chapel/test/release/examples/benchmarks/inspector-executor/IE_SMALL_TESTS/src/OPT_IS_VALID'
+gmake[2]: Leaving directory `/rhome/tbrolin/REPOS/chapel/test/release/examples/benchmarks/inspector-executor/IE_SMALL_TESTS/src/OPT_IS_VALID'
++ [INSPECTOR-EXECUTOR] Considering candidate irregular access at ie_test_A_recordsVarInFunc.chpl:62 (forall at ie_test_A_recordsVarInFunc.chpl:60)
+	- Parent: A, Call: B
+		- Candidate access is in a for-loop (ie_test_A_recordsVarInFunc.chpl:61) that is nested in the forall
+		- index iterator B is defined outside of the loop
+		- Candidate is valid thus far
++ [ADAPTIVE REMOTE PREFETCH] Considering candidate irregular access at ie_test_A_recordsVarInFunc.chpl:62 (forall at ie_test_A_recordsVarInFunc.chpl:60)
+	- Parent: A, Call: B
+		- Candidate access is in a for-loop (ie_test_A_recordsVarInFunc.chpl:61) that is nested in the forall
+		- enclosing loop(s) have valid structure
+
++ [INSPECTOR-EXECUTOR] Pre-Folding Analyzing candidate at ie_test_A_recordsVarInFunc.chpl:60: parent -> A, call -> B, access type -> INSPECTOR
+	- A and B are arrays
+	- A supports the localSubdomain() query
+	- forall is iterating over a distributed domain/array
+	- index iterator B is an array or domain
+	- loop iterator B is an array or domain
+	- A's element type is record
+	- Record elements from A only access POD fields
+	- forall is nested in an outer serial loop
+	- $$$ Optimization VALID at Pre-Folding; replacing primitive with inspectAccess()
+### [INSPECTOR-EXECUTOR] Pre-Folding Analysis Complete ###
+
++ [INSPECTOR-EXECUTOR] Pre-Folding Analyzing candidate at ie_test_A_recordsVarInFunc.chpl:60: parent -> A, call -> B access type -> EXECUTOR
+	- $$$ Optimization VALID at Pre-Folding; replacing primitive with executeAccess()
+### [INSPECTOR-EXECUTOR] Pre-Folding Analysis Complete ###
+
++ [ADAPTIVE REMOTE PREFETCH] Pre-Folding Analyzing candidate #1 in forall #0
+	- candidate is valid
+	- base array A stores records; will initiate prefetch from specific fields accessed
+		- the following non-array fields are accessed in the loop: valueR valueI 
++ [ADAPTIVE REMOTE PREFETCH] Pre-Folding Analysis Complete
+
++ [ADAPTIVE REMOTE PREFETCH] Post Analysis for adaptive remote prefetching candidates
+	- Analyzing candidate #1 in forall #0
+		- candidate is valid
++ [ADAPTIVE REMOTE PREFETCH] Post Analysis for adaptive remote prefetching complete
+
++ [INSPECTOR-EXECUTOR] Looking for cycles in the function call graph
+
++ [INSPECTOR-EXECUTOR] Performing write/modification analysis for inspector-executor
+	- Processing forall at ie_test_A_recordsVarInFunc.chpl:60
+		- checking for invalid modifications to A, B, their domains, the forall domain and index iterators
+		- $$$ Optimization is VALID
+		- Adding calls to inspectorOn() after modifications to arrays/domains of interest
+
++ [INSPECTOR-EXECUTOR] Performing call path analysis for inspector-executor
+### [INSPECTOR-EXECUTOR] Post Analysis Complete ###

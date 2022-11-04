@@ -73,6 +73,13 @@ module ChapelStandard {
   public use ExportWrappers;
   public use ChapelAutoAggregation;
 
+  // added by tbrolin 01/26/2022
+  public use CommunicationSchedule;
+  public use SelectiveDataReplication;
+  public use InspectorExecutor;
+  public use AutoRemoteWriteAggregation;
+  public use AdaptiveRemoteCachePrefetching;
+
   // Standard modules.
   public use Types as Types;
   public use AutoMath as AutoMath;

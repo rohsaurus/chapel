@@ -182,6 +182,10 @@ bool fReportAutoLocalAccess= false;
 bool fAutoAggregation = false;
 bool fReportAutoAggregation= false;
 
+// Added by tbrolin 1/10/2022
+bool fOptimizeIrregularArrayAccesses = false;
+bool fReportIrregArrayAccesses = false;
+
 bool  printPasses     = false;
 FILE* printPassesFile = NULL;
 
@@ -1033,6 +1037,9 @@ static ArgumentDescription arg_desc[] = {
 
  {"auto-aggregation", ' ', NULL, "Enable [disable] automatically aggregating remote accesses in foralls", "N", &fAutoAggregation, "CHPL_AUTO_AGGREGATION", NULL},
 
+  // Added by tbrolin 07/27/2022
+ {"optimize-irregular-array-accesses", ' ', NULL, "Enable [disable] optimizations for irregular array accesses", "N", &fOptimizeIrregularArrayAccesses, "CHPL_OPTIMIZE_IRREGULAR_ARRAY_ACCESSES", NULL},
+
  {"", ' ', NULL, "Run-time Semantic Check Options", NULL, NULL, NULL, NULL},
  {"checks", ' ', NULL, "Enable [disable] all following run-time checks", "n", &fNoChecks, "CHPL_NO_CHECKS", setChecks},
  {"bounds-checks", ' ', NULL, "Enable [disable] bounds checking", "n", &fNoBoundsChecks, "CHPL_NO_BOUNDS_CHECKING", NULL},
@@ -1157,6 +1164,10 @@ static ArgumentDescription arg_desc[] = {
  {"report-auto-local-access", ' ', NULL, "Enable compiler logs for auto local access optimization", "N", &fReportAutoLocalAccess, "CHPL_REPORT_AUTO_LOCAL_ACCESS", NULL},
  {"report-auto-aggregation", ' ', NULL, "Enable compiler logs for automatic aggregation", "N", &fReportAutoAggregation, "CHPL_REPORT_AUTO_AGGREGATION", NULL},
  {"report-optimized-forall-unordered-ops", ' ', NULL, "Show which statements in foralls have been converted to unordered operations", "F", &fReportOptimizeForallUnordered, NULL, NULL},
+
+ // added by tbrolin 07/27/2022
+ {"report-irregular-array-access", ' ', NULL, "Enable compiler logs for irregular array access optimization", "N", &fReportIrregArrayAccesses, "CHPL_REPORT_IRREGULAR_ARRAY_ACCESSES", NULL},
+
  {"report-promotion", ' ', NULL, "Print information about scalar promotion", "F", &fReportPromotion, NULL, NULL},
  {"report-scalar-replace", ' ', NULL, "Print scalar replacement stats", "F", &fReportScalarReplace, NULL, NULL},
 
@@ -1494,6 +1505,9 @@ static void postLocal() {
   if (!fUserSetLocal) fLocal = !strcmp(CHPL_COMM, "none");
 
   if (fLocal) fAutoAggregation = false;
+
+  // Added by tbrolin 7/27/2022
+  if (fLocal) fOptimizeIrregularArrayAccesses = false;
 }
 
 static void postVectorize() {

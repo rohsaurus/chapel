@@ -1,0 +1,21 @@
+gmake[2]: Entering directory '/lus/scratch/e63179/REPOS/chapel/test/release/examples/benchmarks/inspector-executor/IE_SMALL_TESTS/src/OPT_IS_NOT_VALID'
+gmake[2]: Leaving directory '/lus/scratch/e63179/REPOS/chapel/test/release/examples/benchmarks/inspector-executor/IE_SMALL_TESTS/src/OPT_IS_NOT_VALID'
++ [INSPECTOR-EXECUTOR] Considering candidate irregular access at ie_test_forall_notDistributed.chpl:33 (forall at ie_test_forall_notDistributed.chpl:31)
+	- Parent: A, Call: B
+		- Candidate access is in a for-loop (ie_test_forall_notDistributed.chpl:32) that is nested in the forall
+		- index iterator B is defined outside of the loop
+		- Candidate is valid thus far
++ [IRREG WRITE AGGR] Considering candidate irregular access at ie_test_forall_notDistributed.chpl:33 (forall at ie_test_forall_notDistributed.chpl:31)
+	- Parent: A, Call: B
+		 !!! irregular access is not on LHS of operation
+
++ [INSPECTOR-EXECUTOR] Pre-Folding Analyzing candidate at ie_test_forall_notDistributed.chpl:31: parent -> A, call -> B, access type -> INSPECTOR
+	- A and B are arrays
+	- A supports the localSubdomain() query
+	- forall is NOT iterating over a distributed domain/array
+!!! Optimization INVALID; Fixing up the static check to be false
+### [INSPECTOR-EXECUTOR] Pre-Folding Analysis Complete ###
+
++ [INSPECTOR-EXECUTOR] Pre-Folding Analyzing candidate at ie_test_forall_notDistributed.chpl:31: parent -> A, call -> B access type -> EXECUTOR
+!!! Optimization INVALID at Pre-Folding; changing primitive back to original access
+### [INSPECTOR-EXECUTOR] Pre-Folding Analysis Complete ###

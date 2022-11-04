@@ -69,6 +69,21 @@ ForallStmt::ForallStmt(BlockStmt* body):
   optInfo.autoLocalAccessChecked = false;
   optInfo.hasAlignedFollowers = false;
 
+  // added by tbrolin 01/24/2022
+  optInfo.inspectorExecutorChecked = false;
+  optInfo.ieIndexIterator = NULL;
+  optInfo.inspectorFlag = NULL;
+  optInfo.ieID = -99;
+  // we #define -2 in forallOptimizations.cpp to
+  // represent a forall that has not been analyzed
+  // w.r.t. the function ID.
+  optInfo.functionID = -2;
+  // added by tbrolin 06/30/2022
+  optInfo.irregWriteAggregationChecked = false;
+  // added by tbrolin 09/13/2022
+  optInfo.adaptiveRemotePrefetchingChecked = false;
+  optInfo.arpID = -99;
+
   gForallStmts.add(this);
 }
 
@@ -96,6 +111,18 @@ ForallStmt* ForallStmt::copyInner(SymbolMap* map) {
   _this->fRecIterGetIterator  = COPY_INT(fRecIterGetIterator);
   _this->fRecIterFreeIterator = COPY_INT(fRecIterFreeIterator);
   _this->fZipCall             = COPY_INT(fZipCall);
+
+  // added by tbrolin 2/7/2022
+  // copy over optInfo fields that we need during
+  // prefolding. When the forall is part of a function that
+  // gets cloned into a concrete and generic version, we want
+  // to ensure that this info is also copied.
+  _this->optInfo.cloneTypeIE = optInfo.cloneTypeIE;
+  _this->optInfo.indexIteratorType = optInfo.indexIteratorType;
+  _this->optInfo.inspectorFlag = optInfo.inspectorFlag;
+  _this->optInfo.ieID = optInfo.ieID;
+  _this->optInfo.functionID = optInfo.functionID;
+  _this->optInfo.arpID = optInfo.arpID;
 
   return _this;
 }
@@ -612,6 +639,9 @@ ForallStmt* ForallStmt::buildHelper(Expr* indices, Expr* iterator,
   fsDestructureIndices(fs, indices);
   fsVerifyNumIterables(fs);
   adjustReduceOpNames(fs);
+
+  // added by tbrolin
+  fs->optInfo.cloneTypeIE = ORIGINAL;
 
   return fs;
 }

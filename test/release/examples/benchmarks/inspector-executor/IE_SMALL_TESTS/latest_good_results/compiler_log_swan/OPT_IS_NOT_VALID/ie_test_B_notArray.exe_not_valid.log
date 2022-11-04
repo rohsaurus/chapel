@@ -1,0 +1,8 @@
+gmake[2]: Entering directory '/lus/scratch/e63179/REPOS/chapel/test/release/examples/benchmarks/inspector-executor/IE_SMALL_TESTS/src/OPT_IS_NOT_VALID'
+gmake[2]: Leaving directory '/lus/scratch/e63179/REPOS/chapel/test/release/examples/benchmarks/inspector-executor/IE_SMALL_TESTS/src/OPT_IS_NOT_VALID'
++ [INSPECTOR-EXECUTOR] Considering candidate irregular access at ie_test_B_notArray.chpl:25 (forall at ie_test_B_notArray.chpl:23)
+	- Parent: A, Call: coord
+		- !!! invalid loop domain detected
++ [IRREG WRITE AGGR] Considering candidate irregular access at ie_test_B_notArray.chpl:25 (forall at ie_test_B_notArray.chpl:23)
+	- Parent: A, Call: coord
+		 !!! irregular access is not on LHS of operation

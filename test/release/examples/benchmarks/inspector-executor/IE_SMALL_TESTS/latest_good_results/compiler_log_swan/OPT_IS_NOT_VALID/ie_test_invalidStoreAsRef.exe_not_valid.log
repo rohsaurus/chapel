@@ -1,0 +1,8 @@
+gmake[2]: Entering directory '/lus/scratch/e63179/REPOS/chapel/test/release/examples/benchmarks/inspector-executor/IE_SMALL_TESTS/src/OPT_IS_NOT_VALID'
+gmake[2]: Leaving directory '/lus/scratch/e63179/REPOS/chapel/test/release/examples/benchmarks/inspector-executor/IE_SMALL_TESTS/src/OPT_IS_NOT_VALID'
++ [INSPECTOR-EXECUTOR] Considering candidate irregular access at ie_test_invalidStoreAsRef.chpl:26 (forall at ie_test_invalidStoreAsRef.chpl:25)
+	- Parent: A, Call: B
+		 !!! irregular access is on RHS (stored in t) but it must be a const ref or var
++ [IRREG WRITE AGGR] Considering candidate irregular access at ie_test_invalidStoreAsRef.chpl:26 (forall at ie_test_invalidStoreAsRef.chpl:25)
+	- Parent: A, Call: B
+		 !!! irregular access is not on LHS of operation

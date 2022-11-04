@@ -396,6 +396,12 @@ class BlockArr: BaseRectangularArr {
   pragma "local field"
   var myLocArr: unmanaged LocBlockArr(eltType, rank, idxType, stridable)?;
   const SENTINEL = max(rank*int);
+  // added by tbrolin 04/19/22
+  // multiple schedules for each selective data replication optimization that
+  // this array is involved in. Hard-coded for now to 32 possible optimizations.
+  const D_ie : domain(1) = {0..#32};
+  var commSchedules : [D_ie] if rank == 1 then CommunicationSchedule(eltType,idxType,rank)
+                                          else CommunicationSchedule(eltType,rank*idxType,rank);
 }
 
 //

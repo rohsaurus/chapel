@@ -1,0 +1,19 @@
+gmake[2]: Entering directory `/rhome/tbrolin/REPOS/chapel/test/release/examples/benchmarks/inspector-executor/IE_SMALL_TESTS/src/OPT_IS_NOT_VALID'
+gmake[2]: Leaving directory `/rhome/tbrolin/REPOS/chapel/test/release/examples/benchmarks/inspector-executor/IE_SMALL_TESTS/src/OPT_IS_NOT_VALID'
++ [INSPECTOR-EXECUTOR] Considering candidate irregular access at ie_test_accessOnLHS.chpl:24 (forall at ie_test_accessOnLHS.chpl:23)
+	- Parent: A, Call: B
+		 !!! irregular access cannot be on LHS on assignment for inspector-executor
++ [ADAPTIVE REMOTE PREFETCH] Considering candidate irregular access at ie_test_accessOnLHS.chpl:24 (forall at ie_test_accessOnLHS.chpl:23)
+	- Parent: A, Call: B
+		 !!! irregular access cannot be on LHS on assignment
++ [IRREG WRITE AGGR] Considering candidate irregular access at ie_test_accessOnLHS.chpl:24 (forall at ie_test_accessOnLHS.chpl:23)
+	- Parent: A, Call: B
+		- irregular access is on the LHS of the operation
+		- Operation is aggregate-able
+		- no data dependencies detected
+		- candidate is value so far. If no prefolding prints are shown later, it was invalid
+		  due to a non-distributed parent array or non-supported aggregation.
+
++ [IRREG WRITE AGGR] Pre-Folding Analyzing candidate #0
+	- inserting call to aggregator bufferOp() function
+### [IRREG WRITE AGGR] Pre-Folding Analysis Complete ###

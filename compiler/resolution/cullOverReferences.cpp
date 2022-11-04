@@ -37,6 +37,11 @@
 
 #include "global-ast-vecs.h"
 
+// added by tbrolin 02/16/2022
+// Declares the adaptiveRemotePrefetchingPostAnalysis() and 
+// inspectorExecutorPostAnalysis() functions that we call from here.
+#include "forallOptimizations.h"
+
 /* This pass implements a backwards (uses to defs) analysis
    to determine if certain reference Symbols are constant.
 
@@ -1620,6 +1625,14 @@ void cullOverReferences() {
 
   // Pass off to `resolution/lateConstCheck`.
   ctx.performLateConstCheck();
+
+  // added by tbrolin 02/16/2022
+  // perform post-analysis for adaptive remote prefetching and 
+  // inspector-executor optimization
+  if (fOptimizeIrregularArrayAccesses) {
+    adaptiveRemotePrefetchingPostAnalysis();
+    inspectorExecutorPostAnalysis();
+  }
 }
 
 // Handle certain degenerate cases, such as when a

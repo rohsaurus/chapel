@@ -45,6 +45,35 @@ PRAGMA(AGG_GENERATOR, ypr,
        "aggregator generator",
        "this function generates and returns an aggregator")
 
+// added by tbrolin
+PRAGMA(IE_IRREG_PRIMITIVE_ARG, ypr,
+       "part of irreg access primitive",
+       "this var is part of the PRIM_MAYBE_IRREG_ACCESS primitive")
+PRAGMA(SDR_MOD_MARKER, ypr,
+       "selective data replication",
+       "this is the module for selecive data replication")
+PRAGMA(INSPECT_ACCESS, ypr,
+       "inspect access",
+       "this is the procedure for inspecting an access")
+PRAGMA(EXECUTE_ACCESS, ypr,
+       "execute access",
+       "this is the procedure for executing an access")
+PRAGMA(INSPECTOR_ON, ypr,
+       "inspector on",
+       "this is the procedure for turning on the inspector")
+PRAGMA(INSPECTOR_PREAMBLE, ypr,
+       "inspector preamble",
+       "this is the procedure to perform the inspector preamble")
+PRAGMA(EXECUTOR_PREAMBLE, ypr,
+       "executor preamble",
+       "this is the procedure to perform the executor preamble")
+PRAGMA(IE_MOD_MARKER, ypr,
+       "inspector executor module",
+       "this is the module for the inspector-executor")
+PRAGMA(REMOTE_CACHE_PREFETCH, ypr,
+       "remote cache prefetch",
+       "this is the procedure for a remote cache prefetch")
+
 // Indicates an array implementation class can alias other array implementations
 // e.g. array views
 PRAGMA(ALIASING_ARRAY, ypr, "aliasing array", ncm)

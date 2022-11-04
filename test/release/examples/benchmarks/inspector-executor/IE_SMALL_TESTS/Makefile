@@ -1,0 +1,13 @@
+VALID_DIR := ./src/OPT_IS_VALID
+NOT_VALID_DIR := ./src/OPT_IS_NOT_VALID
+
+all: VALID_TESTS NOT_VALID_TESTS
+
+VALID_TESTS:
+	${MAKE} -C ${VALID_DIR}
+
+NOT_VALID_TESTS:
+	${MAKE} -C ${NOT_VALID_DIR}
+
+clean:
+	rm -rf ./bin ./compiler_log

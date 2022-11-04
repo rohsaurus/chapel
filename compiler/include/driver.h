@@ -91,6 +91,10 @@ extern bool fReportOptimizeForallUnordered;
 
 extern bool report_inlining;
 
+// Added by tbrolin 7/27/2022
+extern bool fOptimizeIrregularArrayAccesses;
+extern bool fReportIrregArrayAccesses;
+
 // Chapel Envs
 bool useDefaultEnv(std::string key);
 

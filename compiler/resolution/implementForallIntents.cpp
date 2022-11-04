@@ -826,6 +826,17 @@ static void doImplicitShadowVars(ForallStmt* fs, BlockStmt* block,
 
   for_vector(SymExpr, se, symExprs) {
     Symbol* sym = se->symbol();
+    
+    // added by tbrolin 2/1/22
+    // if we find the flag FLAG_IE_IRREG_PRIMITIVE_ARG, then we need
+    // to continue/skip. This flag is added specifically to a static check
+    // variable that is part of our MAYBE_IRREG_ACCESS primitive, which is inside
+    // a forall. This function will try to make the static check a shadow variable
+    // because it is referenced in the forall (in the primitive) but defined outside
+    // of the forall.
+    if (sym->hasFlag(FLAG_IE_IRREG_PRIMITIVE_ARG)) {
+        continue;
+    }
 
     if (Symbol* sub = outer2shadow.get(sym)) { // already know how to handle?
       if (sub != markPruned)

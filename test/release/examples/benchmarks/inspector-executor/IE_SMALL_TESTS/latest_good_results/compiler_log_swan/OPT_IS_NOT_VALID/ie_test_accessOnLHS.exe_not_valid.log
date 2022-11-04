@@ -1,0 +1,14 @@
+gmake[2]: Entering directory '/lus/scratch/e63179/REPOS/chapel/test/release/examples/benchmarks/inspector-executor/IE_SMALL_TESTS/src/OPT_IS_NOT_VALID'
+gmake[2]: Leaving directory '/lus/scratch/e63179/REPOS/chapel/test/release/examples/benchmarks/inspector-executor/IE_SMALL_TESTS/src/OPT_IS_NOT_VALID'
++ [INSPECTOR-EXECUTOR] Considering candidate irregular access at ie_test_accessOnLHS.chpl:24 (forall at ie_test_accessOnLHS.chpl:23)
+	- Parent: A, Call: B
+		 !!! irregular access cannot be on LHS on assignment for inspector-executor
++ [IRREG WRITE AGGR] Considering candidate irregular access at ie_test_accessOnLHS.chpl:24 (forall at ie_test_accessOnLHS.chpl:23)
+	- Parent: A, Call: B
+		- irregular access is on the LHS of the operation
+		- Operation is aggregate-able
+		- no data dependencies detected
+
++ [IRREG WRITE AGGR] Pre-Folding Analyzing candidate #0
+	- inserting call to aggregator bufferOp() function
+### [IRREG WRITE AGGR] Pre-Folding Analysis Complete ###

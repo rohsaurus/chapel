@@ -381,6 +381,8 @@ ForLoop::ForLoop() : LoopStmt(0)
   mZippered = false;
   mLoweredForall = false;
   mIsForExpr = false;
+  // added by tbrolin 03/11/22
+  forLoopInfoGathered = false;
 }
 
 ForLoop::ForLoop(VarSymbol* index,
@@ -395,6 +397,8 @@ ForLoop::ForLoop(VarSymbol* index,
   mZippered = zippered;
   mLoweredForall = isLoweredForall;
   mIsForExpr = isForExpr;
+  // added by tbrolin 03/11/22
+  forLoopInfoGathered = false;
 }
 
 ForLoop* ForLoop::copyInner(SymbolMap* map)
