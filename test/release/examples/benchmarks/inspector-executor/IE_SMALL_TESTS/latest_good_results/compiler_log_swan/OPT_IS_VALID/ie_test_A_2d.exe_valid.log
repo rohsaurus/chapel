@@ -4,6 +4,9 @@ gmake[2]: Leaving directory '/lus/scratch/e63179/REPOS/chapel/test/release/examp
 	- Parent: A, Call: B
 		- index iterator B is defined outside of the loop
 		- Candidate is valid thus far
++ [ADAPTIVE REMOTE PREFETCH] Considering candidate irregular access at ie_test_A_2d.chpl:45 (forall at ie_test_A_2d.chpl:44)
+	- Parent: A, Call: B
+		!!! loop cannot yield more than one index
 + [IRREG WRITE AGGR] Considering candidate irregular access at ie_test_A_2d.chpl:45 (forall at ie_test_A_2d.chpl:44)
 	- Parent: A, Call: B
 		 !!! irregular access is not on LHS of operation
