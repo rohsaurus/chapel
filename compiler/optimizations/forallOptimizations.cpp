@@ -447,6 +447,7 @@ std::map<int64_t, bool> gInspectorLoopProcessed;
 std::map<int64_t, bool> gExecutorLoopProcessed;
 std::map<int64_t, bool> gDoOptimizationIE;
 std::map<int64_t, std::vector<int>> gFieldPositionsIE;
+std::map<int64_t, std::vector<int>> gFieldPositionsAtomicAddIE;
 std::set<CallExpr *> gDeadCodeToRemoveIE;
 std::map<int64_t, bool> gIrregWriteAggLoopProcessed;
 std::map<int64_t, std::set<int64_t>> gPrefetchCallProcessed;
@@ -1635,6 +1636,7 @@ static ForallStmt *cloneLoop(ForallStmt *forall) {
   clone->optInfo.inspectorFlag = forall->optInfo.inspectorFlag;
   clone->optInfo.ieID = forall->optInfo.ieID;
   clone->optInfo.ieHash = forall->optInfo.ieHash;
+  clone->optInfo.nonConstRefIE = forall->optInfo.nonConstRefIE;
   // added by tbrolin 08/23/2022
   clone->optInfo.functionID = forall->optInfo.functionID;
   // added by tbrolin 06/30/2022
@@ -3160,7 +3162,7 @@ static void analyzeCandidateIE(CallExpr *call,
   // It can only be "const ref t = A[B[i]]". What we see at this point is
   // that parentCall's parent will be a DefExpr, so we if it is "ref var"
   // and does not have the "const" flag, then we abort.
-  if (DefExpr *def = toDefExpr(parentCall->parentExpr)) {
+  /*if (DefExpr *def = toDefExpr(parentCall->parentExpr)) {
     if (def->sym->hasFlag(FLAG_REF_VAR) && !def->sym->hasFlag(FLAG_CONST)) {
       if (fReportIrregArrayAccesses) {
         printf("\t\t !!! irregular access is on RHS (stored in %s) but it must be a const ref or var\n", def->name());
@@ -3169,6 +3171,7 @@ static void analyzeCandidateIE(CallExpr *call,
       return;
     }
   }
+  */
 
   // A cannot be defined inside of the loop body.
   if (forall->loopBody()->contains(parentCallBase->defPoint)) {
@@ -3289,6 +3292,14 @@ static void analyzeCandidateIE(CallExpr *call,
     candidate.second = call;
     forall->optInfo.ieCandidates.push_back(candidate);
     forall->optInfo.ieLoopIteratorSyms = loopIterSymsUsed;
+    // If we had something like "ref t = A[B[i]]", indicate so
+    // we can do additional checks during prefolding to make sure
+    // this is valid.
+    if (DefExpr *def = toDefExpr(parentCall->parentExpr)) {
+      if (def->sym->hasFlag(FLAG_REF_VAR) && !def->sym->hasFlag(FLAG_CONST)) {
+        forall->optInfo.nonConstRefIE = true;
+      }
+    } 
     if (fReportIrregArrayAccesses) {
       printf("\t\t- Candidate is valid thus far\n");
     }
@@ -3400,9 +3411,14 @@ static void generateOptimizedLoopsIE(ForallStmt* forall)
   forall->optInfo.cloneTypeIE = PENDING_OPTIMIZATION;
 
   // 2.) Generate the call/code for "staticCheckCall(id) == true"
+  //     NEW: also a dummy call that we may switch out for later in prefolding.
+  //          This is for writing to atomic record fields via .add()
   CallExpr *staticCheckCall = new CallExpr("staticCheckCallIE",
                                            new_IntSymbol(forall->optInfo.ieID));
-  Expr *staticCond = new CallExpr("==", staticCheckCall, gTrue);
+  CallExpr *dummyCall = new CallExpr("dummyCallIE",
+                                           new_IntSymbol(forall->optInfo.ieID));
+  CallExpr *conjunct = new CallExpr("&&", staticCheckCall, dummyCall);
+  Expr *staticCond = new CallExpr("==", conjunct, gTrue);
 
   // 3.) Later on in prefolding, we need to keep track of whether we processed
   //     a given loop or not. ALA and other optimizations will clone the forall
@@ -4470,7 +4486,7 @@ static bool isIEOptimizationValid(CallExpr *call)
   }
 
   // 6.) If A's elements are records, we need to ensure that any fields
-  //     accessed through A[B[i]] are POD types. This is because we
+  //     accessed through A[B[i]] are POD types. This is because we use
   //     aggregation to update the replicated arrays, and we cannot
   //     aggregate non-POD types. Also, this allows us to do a performance
   //     optimization. While we check for non-POD field accesses, we can
@@ -4483,6 +4499,11 @@ static bool isIEOptimizationValid(CallExpr *call)
   // the "provided" enclosingForallStmt(). We'll use our own that goes across call sites.
   // Normally this would be problematic as resolution hasn't finished completely, but
   // since we are looking for a very specific call-path, it is OK.
+  //
+  // NEW: we allow writes to A[B[i]] if we are writing to record fields, and the writes
+  // are in the form of atomic adds (.add()). To handle this correctly, we need to identify
+  // such fields, and separate those fields from the other fields which are read within the
+  // loop. 
   compute_call_sites();
   ForallStmt *forall = findEnclosingForallLoop(call);
   INT_ASSERT(forall != NULL);
@@ -4550,6 +4571,23 @@ static bool isIEOptimizationValid(CallExpr *call)
       }
     }
   }
+
+  // 8.) If we had something like "ref t = A[B[i]]" but A didn't store records,
+  //     then the optimization is invalid. We only allow "ref t" when we have records,
+  //     AND we had atomic field accesses only in the form of .add(). So if 
+  //     gFieldPositionsAtomicAddIE is empty, we abort. 
+  if (!isRecordA && forall->optInfo.nonConstRefIE == true) {
+    retval = false;
+    if (fReportIrregArrayAccesses) {
+      printf("\t- %s doesn't store records and candidate access is stored as a non-ref variable\n", A->name);
+    }
+  }
+  if (isRecordA && forall->optInfo.nonConstRefIE == true && gFieldPositionsAtomicAddIE.size() == 0) {
+    retval = false;
+    if (fReportIrregArrayAccesses) {
+      printf("\t- %s stores records, candidate access is stored as a non-ref variable BUT there are no atomic field accesses\n", A->name);
+    }
+  } 
   return retval;
 
 } /* end of isIEOptimizationValid */
@@ -4703,7 +4741,6 @@ static CallExpr *processExecutorAccess(CallExpr *call)
   // it was a CallExpr that was the entire index expression into A. 
   Expr *BCall = call->get(13)->remove();
 
-
   // 2.) Next, we need to get a reference to the executor loop.
   ForallStmt *forall = enclosingForallStmt(call);
   INT_ASSERT(forall != NULL);
@@ -4717,12 +4754,31 @@ static CallExpr *processExecutorAccess(CallExpr *call)
   // a special version of the preamble. Otherwise, it is assumed
   // that A's element type is a POD type (we check for this before
   // we get here).
+  //
+  // NEW: if gFieldPositionsAtomicAddIE[forallID] has elements, it
+  // means we have a record with atomic field(s) that are used in
+  // atomic adds. We can do a special executorPreamble to initializes
+  // those atomic field more efficiently. Namely, we only allow the
+  // optimization in this setting if the atomic fields are initialized
+  // to 0 right before the loop runs. So in the preamble, we can just
+  // set the replicated fields to 0 rather than read from the remote array.
   CallExpr *executorPreamble = NULL;
   if (isRecord(arrayElementType(A->getValType()))) {
-    executorPreamble = new CallExpr("executorPreambleRecords",
+    if (gFieldPositionsAtomicAddIE[forallID].size() == 0) {
+        executorPreamble = new CallExpr("executorPreambleRecords",
                                     A, ieIDVar, ieHash);
+    }
+    else {
+      executorPreamble = new CallExpr("executorPreambleRecordsAtomicAdd",
+                                    A, ieIDVar, ieHash);
+    }
+    // avoid inserting duplicates
+    std::set<int> positionSet;
     for (auto& pos : gFieldPositionsIE[forallID]) {
-      executorPreamble->insertAtTail(new_IntSymbol(pos));
+      if (positionSet.count(pos) == 0) {
+        executorPreamble->insertAtTail(new_IntSymbol(pos));
+        positionSet.insert(pos);
+      }
     }
   }
   else {
@@ -4736,7 +4792,57 @@ static CallExpr *processExecutorAccess(CallExpr *call)
   resolveBlockStmt(dummyBlock);
   dummyBlock->flattenAndRemove();
 
-  // 4.) Ensure that things make it over to post resolution
+  // 4.) if gFieldPositionsAtomicAddIE[forallID] has elements, then we have deteremined
+  //     that we have writes to atomic fields in a record that are only .add() and there
+  //     are no other accesses to the fields. So insert a call to executorPostambleRecords
+  //     right after the executor forall. This will "reduce" the replicated copies of the
+  //     atomic fields to the original array.
+  //
+  // NEW: if A stores records and we had atomic fields in atomic adds, add
+  // a call to fieldsHaveAddIdentity() in the staticCheck conditional. We do this by
+  // replacing the dummyCallIE with fieldsHaveAddIdentity().
+  if (gFieldPositionsAtomicAddIE[forallID].size() > 0) {
+    CallExpr *executorPostamble = new CallExpr("executorPostambleRecords", A, ieIDVar, ieHash);
+    // avoid inserting duplicates
+    std::set<int> positionSet;
+    for (auto& pos : gFieldPositionsAtomicAddIE[forallID]) {
+      if (positionSet.count(pos) == 0) {
+        executorPostamble->insertAtTail(new_IntSymbol(pos));
+        positionSet.insert(pos);
+      }
+    }
+    BlockStmt *dummyBlock2 = new BlockStmt();
+    dummyBlock2->insertAtTail(executorPostamble);
+    forall->insertAfter(dummyBlock2);
+    normalize(dummyBlock2);
+    resolveBlockStmt(dummyBlock2);
+    dummyBlock2->flattenAndRemove();
+    // find dummyCallIE(forallID) and replace it with fieldsHaveAddIdentity()
+    forv_Vec(CallExpr, fCall, gCallExprs) {
+      if (fCall->isNamed("dummyCallIE")) {
+        int64_t argID;
+        get_int(toSymExpr(fCall->get(1)), &argID);
+        if (argID == (int64_t)forallID) {
+          CallExpr *identityCheck = new CallExpr("fieldsHaveAddIdentity", A);
+          for (auto& pos : positionSet) {
+            identityCheck->insertAtTail(new_IntSymbol(pos));
+          }
+          // replace dummyCallIE with identityCheck. Do it via the dummyBlock approach
+          // so it resolves
+          CallExpr *parentCall = toCallExpr(fCall->parentExpr);
+          fCall->replace(identityCheck);
+          BlockStmt *dummyBlock3 = new BlockStmt();
+          parentCall->insertAfter(dummyBlock3);
+          dummyBlock3->insertAtTail(parentCall->remove());
+          normalize(dummyBlock3);
+          resolveBlockStmt(dummyBlock3);
+          dummyBlock3->flattenAndRemove();
+        }
+      }
+    }
+  }
+
+  // 5.) Ensure that things make it over to post resolution
   forall->optInfo.ieID = (int)forallID;
   forall->optInfo.ieForallIteratorSym = forallIterSym;
   forall->optInfo.ieIndexIterator = indexIterator;
@@ -4771,7 +4877,7 @@ static CallExpr *processExecutorAccess(CallExpr *call)
     forall->optInfo.ieIndexSymbols.insert(sym);
   }
 
-  // 5.) Build up the call to executeAccess
+  // 6.) Build up the call to executeAccess
   Symbol *replArr = toSymExpr(call->get(1))->symbol();
   Symbol *arrDom = toSymExpr(call->get(2))->symbol();
   INT_ASSERT(replArr != NULL);
@@ -5231,6 +5337,10 @@ static void executeAccessCallPostAnalysis(CallExpr *call,
     }
   }
   
+  // We do a similar check as above, but for the record fields if we had records.
+  // We only need to do this if nonConstRefIE is true. We have the set of field
+  // positions which are accessed in the loop: gFieldPositionsIE.
+  // TODO: actually do this
 
   std::pair<Symbol *, Symbol *> candidate = forall->optInfo.ieCandidatesResolved[0];
   Symbol *A = candidate.first;
@@ -6862,21 +6972,33 @@ static void removeOptimizationIE(int ID,
       int64_t argID;
       get_int(toSymExpr(fCall->get(1)), &argID);
       if (argID == (int64_t)ID) {
-        // fCall is the staticCheckCallIE call. It's parentExpr should
-        // be a PRIM_MOVE. After that move will be DefExpr and then another
-        // PRIM_MOVE and finally the CondStmt. We should probably do
-        // checks for all that, but for now just assume its true.
-        if (CondStmt *cond = toCondStmt(fCall->parentExpr->next->next->next)) {
-          retval = (Expr*)(cond->prev);
-          // Make an empty BlockStmt and copy the else-stmt into it
-          BlockStmt *b = new BlockStmt();
-          b->insertAtHead(cond->elseStmt->remove());
-          // Put the block before the CondStmt
-          cond->insertAfter(b);
-          // Remove the CondStmt
-          cond->thenStmt->remove();
-          cond->remove();
+        // fCall is the staticCheckCallIE call. We want to find the CondStmt that
+        // contains the code to remove. Hacky, but if we follow fCall->parentExpr->next...
+        // we will find a CondStmt that is part of the && short circuit, and then we'll see
+        // the CondStmt that we want.
+        CondStmt *cond = NULL;
+        bool foundFirstCond = false;
+        Expr *curr = fCall->parentExpr;
+        while (curr != NULL && cond == NULL) {
+          if (CondStmt *temp = toCondStmt(curr)) {
+            if (foundFirstCond == false) {
+              foundFirstCond = true;
+            }
+            else {
+              cond = temp;
+            }
+          }
+          curr = curr->next;
         }
+        INT_ASSERT(cond != NULL);
+        // Make an empty BlockStmt and copy the else-stmt into it
+        BlockStmt *b = new BlockStmt();
+        b->insertAtHead(cond->elseStmt->remove());
+        // Put the block before the CondStmt
+        cond->insertAfter(b);
+        // Remove the CondStmt
+        cond->thenStmt->remove();
+        cond->remove();
       }
     }
   }
@@ -7916,7 +8038,7 @@ static bool detectFieldAccesses(Symbol *sym,
   for_SymbolSymExprs(symexpr, sym) {
     if (CallExpr *symCall = toCallExpr(symexpr->parentExpr)) {
       if(Symbol *fieldSym = isFieldAccess(symCall, at)) {
-        if (propagateNotPOD(fieldSym->getValType())) {
+        if (propagateNotPOD(fieldSym->getValType()) && !isAtomicType(fieldSym->getValType())) {
           // access to non-POD field
           return false;
         }
@@ -7927,6 +8049,35 @@ static bool detectFieldAccesses(Symbol *sym,
           int pos = at->getFieldPosition(fieldSym->name);
           INT_ASSERT(pos >= 0);
           gFieldPositionsIE[ID].push_back(pos-1);
+          // If the field is atomic and the field is used in a call to .add(),
+          // log this field position in gFieldPositionsAtomicAddIE. If we DO NOT
+          // find a use of this field in .add() or it is used in something other
+          // than the MOVE we expected, then return false as it is something
+          // that we do not support right now.
+          bool added = false;
+          bool invalidUse = false;
+          if (isAtomicType(fieldSym->getValType())) {
+            // symCall->parentExpr should be a move into a call_tmp
+            if (CallExpr *moveCall = toCallExpr(symCall->parentExpr)) {
+              // get the call_tmp and look for its use in a call to add
+              Symbol *callTemp = toSymExpr(moveCall->get(1))->symbol();
+              for_SymbolSymExprs(symexpr2, callTemp) {
+                if (CallExpr *fieldCall = toCallExpr(symexpr2->parentExpr)) {
+                  if (fieldCall->isNamed("add")) {
+                    // find the use of fieldSym within an atomic add
+                    gFieldPositionsAtomicAddIE[ID].push_back(pos-1);
+                    added = true;
+                  }
+                  else if (fieldCall != moveCall) {
+                    invalidUse = true; 
+                  }
+                }
+              }
+              if (added != true || invalidUse == true) {
+                return false;
+              }
+            }
+          }
         }
       }
       else {

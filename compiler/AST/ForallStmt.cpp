@@ -74,6 +74,7 @@ ForallStmt::ForallStmt(BlockStmt* body):
   optInfo.ieIndexIterator = NULL;
   optInfo.inspectorFlag = NULL;
   optInfo.ieID = -99;
+  optInfo.nonConstRefIE = false;
   // we #define -2 in forallOptimizations.cpp to
   // represent a forall that has not been analyzed
   // w.r.t. the function ID.
@@ -123,7 +124,7 @@ ForallStmt* ForallStmt::copyInner(SymbolMap* map) {
   _this->optInfo.ieID = optInfo.ieID;
   _this->optInfo.functionID = optInfo.functionID;
   _this->optInfo.arpID = optInfo.arpID;
-
+  _this->optInfo.nonConstRefIE = optInfo.nonConstRefIE;
   return _this;
 }
 

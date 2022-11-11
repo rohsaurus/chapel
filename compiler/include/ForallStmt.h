@@ -271,6 +271,12 @@ class ForallOptimizationInfo {
     // gets the same ID.
     int functionID;
 
+    // added by tbrolin 11/10/2022
+    // Determined during normalization whether we had something like
+    // "ref t = A[B[i]]". We want to know this during prefolding so we
+    // can make some additional checks.
+    bool nonConstRefIE;
+
     // added by tbrolin 06/30/2022
     // Flag that says whether the forall has been checked by the
     // irregular write aggregation optimization

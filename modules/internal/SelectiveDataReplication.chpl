@@ -68,6 +68,7 @@ module SelectiveDataReplication {
     private use ChapelStandard;
     use Reflection;
     use ChapelAutoAggregation.CopyAggregation;
+    private use RemoteWriteAggregation;
 
     //###################################################################
     // getArrDom: Given an array A, return the corresponding arrDom field
@@ -205,12 +206,138 @@ module SelectiveDataReplication {
                                     agg.copy(dst, src);
                                 }
                             }
+                            else if isAtomic(fieldType) {
+                                forall idx in indices with (var agg = new AtomicCopyDstAggregator(fieldType.T)) {
+                                    ref src = getFieldRef(A[idx], i);
+                                    ref dst = getFieldRef(replArr[idx], i);
+                                    agg.write(dst, src.read());
+                                }               
+                            }
                         }
                     }
                 }
             }
         }
     } /* end of executorPreambleRecords */
+
+    //###################################################################
+    // executorPreamble: same as above but a micro-optimization when a
+    // field we are updating is atomic and it is written to within the loop.
+    // This means the write is something like .add(), and we only support this
+    // case if the elements are set to 0 (the identity of the + operator in terms
+    // of reductions). It is faster to just set the element to 0 vs doing atomic
+    // reads from A.
+    //
+    // A: the array of interest with ReplicatedElems records
+    // id: ID of the forall we are dealing with
+    // hash: call-site hash that we are dealing with
+    // fieldPositions: field indices of the record fields of interest
+    //###################################################################
+    inline proc executorPreambleRecordsAtomicAdd(A, id : int, hash : (int,int,int,int), fieldPositions ...?numPositions)
+    {
+        coforall loc in Locales do on loc {
+            ref replRec = A.commSchedules[id].scheds[hash];
+            ref replArr = replRec.replArr;
+            const ref indices = replRec.indices;
+            if indices.size > 0 {
+                for fieldPos in fieldPositions {
+                    param nFields = numFields(replRec.elemType);
+                    for param i in 0..#nFields {
+                        if (i == fieldPos) {
+                            type fieldType = getFieldRef(A[0], i).type;
+                            if isPODType(fieldType) {
+                                forall idx in indices with (var agg = new SrcAggregator(fieldType)) {
+                                    ref src = getFieldRef(A[idx], i);
+                                    ref dst = getFieldRef(replArr[idx], i);
+                                    agg.copy(dst, src);
+                                }
+                            }
+                            else if isAtomic(fieldType) {
+                                forall idx in indices {
+                                    ref dst = getFieldRef(replArr[idx], i);
+                                    dst.write(0, memoryOrder.relaxed);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }   
+    } /* end executorPreambleRecordsAtomicAdd */
+
+    //###################################################################
+    // executorPostambleRecords: runs right after the executor to "reduce"
+    // replicated elements back to the original array. We only do this
+    // in the case of record fields that are atomics, and the writes in
+    // the forall are in the form of atomic adds (.add()). We could generalize
+    // this in the future to allow for writes to atomics that are not record fields
+    // but we don't have a use-case for that right now.
+    //
+    // A: the array of interest with ReplicatedElems records
+    // id: ID of the forall we are dealing with
+    // hash: call-site hash that we are dealing with
+    // fieldPositions: field indices of the record fields of interest
+    //###################################################################
+    inline proc executorPostambleRecords(A, id : int, hash : (int,int,int,int), fieldPositions ...?numPositions)
+    {
+        coforall loc in Locales do on loc {
+            ref replRec = A.commSchedules[id].scheds[hash];
+            ref replArr = replRec.replArr;
+            const ref indices = replRec.indices;
+            if indices.size > 0 {
+                for fieldPos in fieldPositions {
+                    param nFields = numFields(replRec.elemType);
+                    for param i in 0..#nFields {
+                        if (i == fieldPos) {
+                            type fieldType = getFieldRef(A[0], i).type;
+                            if isAtomic(fieldType) {
+                                forall idx in indices with (var agg = new AtomicAddAggregator(fieldType.T)) {
+                                    ref src = getFieldRef(A[idx], i);
+                                    ref dst = getFieldRef(replArr[idx], i);
+                                    agg.bufferOp(dst, src.read());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } /* end of executorPostambleRecords */
+
+    //###################################################################
+    // fieldsHaveAddIdentity: given an array that is assumed to hold 
+    // records as elements, ensure that specified fields are set to 0,
+    // which is the identity for addition. If any field is not 0, return
+    // false. Otherwise, return true.
+    //
+    // We insert this procedure call during prefolding, where we know if
+    // A stores records and everything else checks out.
+    //
+    // A: the array of interest
+    // fieldPositions: field indices of the record fields of interest
+    //###################################################################
+    inline proc fieldsHaveAddIdentity(ref A : [?D], fieldPositions ...?numPositions) : bool
+    {
+        var isValid : bool = true;
+        forall i in A.domain with (ref isValid) {
+            for fieldPos in fieldPositions {
+                param nFields = numFields(A.eltType);
+                for param j in 0..#nFields {
+                    if (j == fieldPos) {
+                        ref field = getFieldRef(A[i], j);
+                        if (isAtomic(field)) {
+                            if (field.read(memoryOrder.relaxed) != 0) {
+                                isValid = false;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return isValid;
+    }
+    proc dummyCallIE(id : int) { return true; }
 
     //###################################################################
     // inspectorPreamble: this is the code that runs prior to the inspector
