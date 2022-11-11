@@ -3,6 +3,16 @@ gmake[2]: Leaving directory '/lus/scratch/e63179/REPOS/chapel/test/release/examp
 + [INSPECTOR-EXECUTOR] Considering candidate irregular access at ie_test_B_aliasInForLoop.chpl:28 (forall at ie_test_B_aliasInForLoop.chpl:25)
 	- Parent: A, Call: foo
 		 !!! foo cannot be defined inside of the forall
-+ [IRREG WRITE AGGR] Considering candidate irregular access at ie_test_B_aliasInForLoop.chpl:28 (forall at ie_test_B_aliasInForLoop.chpl:25)
++ [ADAPTIVE REMOTE PREFETCH] Considering candidate irregular access at ie_test_B_aliasInForLoop.chpl:28 (forall at ie_test_B_aliasInForLoop.chpl:25)
 	- Parent: A, Call: foo
-		 !!! irregular access is not on LHS of operation
+		- Candidate access is in a for-loop (ie_test_B_aliasInForLoop.chpl:26) that is nested in the forall
+		- enclosing loop(s) have valid structure
+
++ [ADAPTIVE REMOTE PREFETCH] Pre-Folding Analyzing candidate #1 in forall #0
+	- candidate is valid
++ [ADAPTIVE REMOTE PREFETCH] Pre-Folding Analysis Complete
+
++ [ADAPTIVE REMOTE PREFETCH] Post Analysis for adaptive remote prefetching candidates
+	- Analyzing candidate #1 in forall #0
+		- candidate is valid
++ [ADAPTIVE REMOTE PREFETCH] Post Analysis for adaptive remote prefetching complete

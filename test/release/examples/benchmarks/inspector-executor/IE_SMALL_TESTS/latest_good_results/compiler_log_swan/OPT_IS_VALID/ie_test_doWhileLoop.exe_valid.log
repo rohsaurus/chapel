@@ -4,9 +4,9 @@ gmake[2]: Leaving directory '/lus/scratch/e63179/REPOS/chapel/test/release/examp
 	- Parent: A, Call: B
 		- index iterator B is defined outside of the loop
 		- Candidate is valid thus far
-+ [IRREG WRITE AGGR] Considering candidate irregular access at ie_test_doWhileLoop.chpl:36 (forall at ie_test_doWhileLoop.chpl:35)
++ [ADAPTIVE REMOTE PREFETCH] Considering candidate irregular access at ie_test_doWhileLoop.chpl:36 (forall at ie_test_doWhileLoop.chpl:35)
 	- Parent: A, Call: B
-		 !!! irregular access is not on LHS of operation
+		- enclosing loop(s) have valid structure
 
 + [INSPECTOR-EXECUTOR] Pre-Folding Analyzing candidate at ie_test_doWhileLoop.chpl:35: parent -> A, call -> B, access type -> INSPECTOR
 	- A and B are arrays
@@ -22,6 +22,15 @@ gmake[2]: Leaving directory '/lus/scratch/e63179/REPOS/chapel/test/release/examp
 + [INSPECTOR-EXECUTOR] Pre-Folding Analyzing candidate at ie_test_doWhileLoop.chpl:35: parent -> A, call -> B access type -> EXECUTOR
 	- $$$ Optimization VALID at Pre-Folding; replacing primitive with executeAccess()
 ### [INSPECTOR-EXECUTOR] Pre-Folding Analysis Complete ###
+
++ [ADAPTIVE REMOTE PREFETCH] Pre-Folding Analyzing candidate #1 in forall #0
+	- candidate is valid
++ [ADAPTIVE REMOTE PREFETCH] Pre-Folding Analysis Complete
+
++ [ADAPTIVE REMOTE PREFETCH] Post Analysis for adaptive remote prefetching candidates
+	- Analyzing candidate #1 in forall #0
+		- candidate is valid
++ [ADAPTIVE REMOTE PREFETCH] Post Analysis for adaptive remote prefetching complete
 
 + [INSPECTOR-EXECUTOR] Looking for cycles in the function call graph
 

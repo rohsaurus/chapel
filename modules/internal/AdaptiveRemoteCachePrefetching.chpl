@@ -30,6 +30,7 @@
 module AdaptiveRemoteCachePrefetching {
 
     private use ChapelStandard;
+    private use ChplConfig;
     use Reflection;
 
     // The default prefetch distance that all distances start as.
@@ -524,20 +525,22 @@ module AdaptiveRemoteCachePrefetching {
     // Param/static check used to ensure that the prefetch is supported.
     // We can do prefetching as long as the loop that contains the access
     // to prefetch iterates over a non-associative array or domain. We also
-    // ensure that A and B from A[B[i]] are arrays
+    // ensure that A and B from A[B[i]] are arrays. Finally, DO NOT do prefetching
+    // if CHPL_COMM == "ugni"; there are no non-blocking reads in that case, so
+    // prefetching is useless.
     proc chpl__isPrefetchSupported(loopIter : [?D], A : [?F], B : [?E]) param
     {
-        return !loopIter.domain.isAssociative();
+        return !loopIter.domain.isAssociative() && CHPL_COMM != "ugni";
     }
     proc chpl__isPrefetchSupported(loopIter : domain, A : [?F], B : [?E]) param
     {
-        return !loopIter.isAssociative();
+        return !loopIter.isAssociative() && CHPL_COMM != "ugni";
     }
     // Matched when the loop iterates over a range, so there is no
     // loop iterator Symbol
     proc chpl__isPrefetchSupported(A, B) param
     {
-        return isArray(A) && isArray(B);
+        return isArray(A) && isArray(B) && CHPL_COMM != "ugni";
     }
     proc chpl__isPrefetchSupported(obj1, obj2, obj3) param
     {

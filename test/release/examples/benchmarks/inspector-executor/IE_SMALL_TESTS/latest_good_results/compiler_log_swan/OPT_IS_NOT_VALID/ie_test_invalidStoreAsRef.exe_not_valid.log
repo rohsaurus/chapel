@@ -3,6 +3,15 @@ gmake[2]: Leaving directory '/lus/scratch/e63179/REPOS/chapel/test/release/examp
 + [INSPECTOR-EXECUTOR] Considering candidate irregular access at ie_test_invalidStoreAsRef.chpl:26 (forall at ie_test_invalidStoreAsRef.chpl:25)
 	- Parent: A, Call: B
 		 !!! irregular access is on RHS (stored in t) but it must be a const ref or var
-+ [IRREG WRITE AGGR] Considering candidate irregular access at ie_test_invalidStoreAsRef.chpl:26 (forall at ie_test_invalidStoreAsRef.chpl:25)
++ [ADAPTIVE REMOTE PREFETCH] Considering candidate irregular access at ie_test_invalidStoreAsRef.chpl:26 (forall at ie_test_invalidStoreAsRef.chpl:25)
 	- Parent: A, Call: B
-		 !!! irregular access is not on LHS of operation
+		- enclosing loop(s) have valid structure
+
++ [ADAPTIVE REMOTE PREFETCH] Pre-Folding Analyzing candidate #1 in forall #0
+	- candidate is valid
++ [ADAPTIVE REMOTE PREFETCH] Pre-Folding Analysis Complete
+
++ [ADAPTIVE REMOTE PREFETCH] Post Analysis for adaptive remote prefetching candidates
+	- Analyzing candidate #1 in forall #0
+		- candidate is valid
++ [ADAPTIVE REMOTE PREFETCH] Post Analysis for adaptive remote prefetching complete
