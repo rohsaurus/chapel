@@ -483,9 +483,9 @@ void doPreNormalizeArrayOptimizations() {
       // Let's only focus on user modules
       if (fOptimizeIrregularArrayAccesses) {
         if (forall->getModule()->modTag == MOD_USER) {
-          //inspectorExecutor(forall);
+          inspectorExecutor(forall);
           adaptiveRemotePrefetching(forall);
-          //irregularWriteAggregation(forall);
+          irregularWriteAggregation(forall);
         }
       }
       if (!fNoFastFollowers) {
