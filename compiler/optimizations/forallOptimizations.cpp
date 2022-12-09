@@ -483,9 +483,9 @@ void doPreNormalizeArrayOptimizations() {
       // Let's only focus on user modules
       if (fOptimizeIrregularArrayAccesses) {
         if (forall->getModule()->modTag == MOD_USER) {
-          inspectorExecutor(forall);
+          //inspectorExecutor(forall);
           adaptiveRemotePrefetching(forall);
-          irregularWriteAggregation(forall);
+          //irregularWriteAggregation(forall);
         }
       }
       if (!fNoFastFollowers) {
@@ -10181,6 +10181,19 @@ static void addTaskPrivateVariablesToForallARP(ForallStmt *forall,
                                                             windowTmp,
                                                             NULL,
                                                             new CallExpr("initCounts"));
+
+
+  /*UnresolvedSymExpr *distArrTmp = new UnresolvedSymExpr(astr("distArray_", ID));
+  ShadowVarSymbol *distArr = ShadowVarSymbol::buildForPrefix(SVP_REF,
+                                                            distArrTmp,
+                                                            NULL,
+                                                            new CallExpr("getDistArray"));
+  forall->shadowVariables().insertAtTail(distArr->defPoint);
+  //forall->insertAfter(new CallExpr("printDistanceStats"));
+  //forall->insertAfter(new CallExpr("resetTaskIDs"));
+  candidate.distArr = distArr;
+  */
+
   forall->shadowVariables().insertAtTail(prefetchDistance->defPoint);
   forall->shadowVariables().insertAtTail(count->defPoint);
   forall->shadowVariables().insertAtTail(window->defPoint);
@@ -10520,6 +10533,7 @@ static void createPrefetchCallARP(ForallStmt *forall,
   if (prefetchCallArray != NULL) {
     thenBlock->insertAtHead(prefetchCallArray);
     elseBlock->insertAtHead(prefetchCallDomainOrRange);
+    //elseBlock->insertAtHead(new CallExpr("logDistance", candidate.prefetchDistance, candidate.distArr));
   }
   else {
     // Didn't have ARRAY_OR_DOMAIN, so only need to worry about prefetchCallDomainOrRange.

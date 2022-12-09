@@ -435,6 +435,61 @@ module AdaptiveRemoteCachePrefetching {
         }
     }
 
+    // Utility code to monitor the prefetch distance. When we want to do this, we'll uncomment out
+    // some compiler code that sets thing up when the optimization is applied. Specifically, each
+    // task in the forall gets its own array with MAX_PREFETCH_DISTANCE elements. This array keeps
+    // track of how many times a given distance i is used for a prefetch. This is done by simply
+    // incrementing the array at index i.
+    //
+    use BlockDist;
+    var numArrays = numLocales * here.maxTaskPar;
+    var arrDom = {1..MAX_PREFETCH_DISTANCE};
+    var distArrays = newBlockArr({0..#numArrays}, [arrDom] int);
+    forall arr in distArrays {
+        arr = 0;
+        arr[initPrefetchDistance()] = 1;
+    }
+    // A given task will be assigned an array from distArrays, but we need to ensure it is co-located
+    // on the locale that the task is on. So we make another array of indices that will be atomically
+    // "given" to each task
+    var indexArray = newBlockArr(LocaleSpace, atomic int);
+    forall elem in indexArray {
+        elem.write(0);
+    }
+    // This is called within the forall with's clause. It gives a task its own array to
+    // keep track of the distances. We ensure it is co-located on the locale where that task is.
+    inline proc getDistArray() ref
+    {
+        const taskID = indexArray[here.id].fetchAdd(1) + (here.id * here.maxTaskPar);
+        return distArrays[taskID];
+    }
+    // This is called right before we do a prefetch.
+    inline proc logDistance(const dist, ref distArr)
+    {
+        distArr[dist] += 1;
+    }
+    // For apps like SSSP where we need to run multiple iterations, we need
+    // to reset the task IDs each time; otherwise they increment past the max value.
+    inline proc resetTaskIDs()
+    {
+        forall elem in indexArray {
+            elem.write(0);
+        }
+    }
+    // Print the stats
+    inline proc printDistanceStats()
+    {
+        writef("$$$ Prefetch Distance Statistics (how many times each distance was used)\n");
+        for (idx, arr) in zip(distArrays.domain, distArrays) {
+            writef("+ Task %i on Locale %i:\n", idx, arr.locale.id);
+            for (dist, count) in zip(arr.domain, arr) {
+                writef("\t[%i] = %i\n", dist, count);
+            }
+            writef("\n");
+        }
+    }
+
+
     // This procedure performs the adjustment of a given prefetch distance. It is
     // the version that favors increasing the distance to reduce waited-on prefetches.
     // The compiler will insert a call to this function within the loop that contains 
