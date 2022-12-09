@@ -10539,6 +10539,7 @@ static void createPrefetchCallARP(ForallStmt *forall,
     // Didn't have ARRAY_OR_DOMAIN, so only need to worry about prefetchCallDomainOrRange.
     // It goes into the then-block for the out-of-bounds check
     candidate.outOfBoundsCond->thenStmt->insertAtTail(prefetchCallDomainOrRange);
+    //candidate.outOfBoundsCond->thenStmt->insertAtTail(new CallExpr("logDistance", candidate.prefetchDistance, candidate.distArr));
   }
  
 } /* end of createPrefetchCallARP */
