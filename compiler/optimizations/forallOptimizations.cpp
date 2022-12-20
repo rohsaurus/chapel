@@ -415,7 +415,8 @@ static void areSymbolsUsedInBlock(BlockStmt * block,
                                   bool *doDependencyChecks,
                                   bool *foundDependency,
                                   std::set<Symbol *> symbols,
-                                  std::set<FnSymbol *> &fnProcessed);
+                                  std::set<FnSymbol *> &fnProcessed,
+                                  std::vector< std::tuple<Expr *, Expr *, IrregWriteAggrOp> > &candidates);
 static void optimizeLoopIWA(ForallStmt *forall);
 static TypeSymbol *generateAggregationRecord(ForallStmt *forall,
                                              int ID,
@@ -484,8 +485,8 @@ void doPreNormalizeArrayOptimizations() {
       if (fOptimizeIrregularArrayAccesses) {
         if (forall->getModule()->modTag == MOD_USER) {
           //inspectorExecutor(forall);
-          adaptiveRemotePrefetching(forall);
-          //irregularWriteAggregation(forall);
+          //adaptiveRemotePrefetching(forall);
+          irregularWriteAggregation(forall);
         }
       }
       if (!fNoFastFollowers) {
@@ -11190,7 +11191,18 @@ static void findCandidatesIWA(ForallStmt* forall)
   std::vector<CallExpr *> callExprs;
   collectCallExprs(forall->loopBody(), callExprs);
 
-  for_vector(CallExpr, call, callExprs) {
+  // Normally, we would iterate through the vector of CallExprs normally,
+  // from first to last. The assumption (which I believe is accurate) is that
+  // the CallExprs in the vector are in program order. We want to be able to allow
+  // two aggregation candiates to be optimized in the loop, even if they deal with
+  // the same array. Since both are doing aggregation, they're both order indepdent
+  // and there's no data dependency. But if we go in program order when analyzing
+  // candidates, it is difficult to determine this. So let's go through the vector
+  // backwards. That way, when we look ahead of a given candidate, any accesses to
+  // the same array that is also an aggregation candidate would have been processed
+  // as such.
+  for (auto it = callExprs.rbegin(); it != callExprs.rend(); ++it) {
+    CallExpr *call = *it;
     // 1.) Ensure that call has a call-base, which means we
     //     have something like B[expr].
     if (getCallBase(call)) {
@@ -11434,6 +11446,12 @@ static void analyzeCandidateIWA(CallExpr *call,
   // about. So we just focus on the loop body (i.e., an iteration) as a stand-alone serial basic block.
   // See the function we call below for more info about what we are looking for.
   //
+  // What we want to allow are accesses after the candidate which are aggregation candidates. Assuming
+  // that this candidate and that one are valid, they are both order indepdent and can both be optimized.
+  // Because findCandidatesIWA() iterates through the loop's CallExprs in reverse order, all we have to
+  // do is check whether the given access is an aggregation candidate. If it is, we can skip it and move
+  // on.
+  //
   // We want to pass into aggregatedStmtHasDataDependencies the top-most CallExpr for the aggregated
   // statement. For something like A[B[i]].add(1), this will be opParent from earlier. Otherwise, it
   // will be opCall. We also pass in just parentCall, so we can extract the symbol A from A[B[i]].
@@ -11547,7 +11565,8 @@ static IrregWriteAggrOp isOperationAggregatable(CallExpr *call)
     1.) There can be no reads or writes to A (and its aliases) after the aggregated
     statement. This only applies to statements within the forall loop's body. If the
     aggregated statement is in a foreach loop, it applies to the statements in that loop as
-    well as those after the foreach loop (while still in the forall loop).
+    well as those after the foreach loop (while still in the forall loop). However, we do
+    allow accesses if they are an aggregation candidate.
 
     2.) For any function calls made after the aggregated statement within the forall,
     we look for accesses made to A (and all of its aliases) in that function. If A is
@@ -11600,7 +11619,8 @@ static bool aggregatedStmtHasDataDependencies(ForallStmt *forall,
                         &doDependencyCheck,
                         &foundDependency,
                         aliasSymbols,
-                        fnProcessed);
+                        fnProcessed,
+                        forall->optInfo.irregWriteAggrCandidates);
 
   return foundDependency;
 
@@ -11793,6 +11813,10 @@ static void findAliasesForSymbol(Symbol *sym,
     and see whether any of the symbols are used. This could happen if a symbol was a global
     variable.
 
+    We do allow for any statement that is part of an existing aggregation candidate, which
+    we verify by look into the candidates vector. This means we can support multiple aggregations
+    on the same data/base array.
+
     Arguments:
     block -> the current BlockStmt to inspect
     matchCall -> the CallExpr to look for initially
@@ -11800,6 +11824,7 @@ static void findAliasesForSymbol(Symbol *sym,
     foundDependency -> will be set to true if we found a data dependency
     symbols -> set of Symbols to check against
     fnProcessed -> set of FnSymbols that we've processed thus far
+    candidates -> current set of candidates in the forall
 
     Return:
     None; foundDependency will be set to true if we found a dependency
@@ -11809,7 +11834,8 @@ static void areSymbolsUsedInBlock(BlockStmt * block,
                                   bool *doDependencyChecks,
                                   bool *foundDependency,
                                   std::set<Symbol *> symbols,
-                                  std::set<FnSymbol *> &fnProcessed)
+                                  std::set<FnSymbol *> &fnProcessed,
+                                  std::vector< std::tuple<Expr *, Expr *, IrregWriteAggrOp> > &candidates)
 {
   // If we have a dependency, there is no need to keep looking.
   if (*foundDependency == true) {
@@ -11823,7 +11849,7 @@ static void areSymbolsUsedInBlock(BlockStmt * block,
     if (!(*doDependencyChecks)) {
       // If we have a Forall, look into its body
       if (ForallStmt *forall = toForallStmt(node)) {
-        areSymbolsUsedInBlock(forall->loopBody(), matchCall, doDependencyChecks, foundDependency, symbols, fnProcessed);
+        areSymbolsUsedInBlock(forall->loopBody(), matchCall, doDependencyChecks, foundDependency, symbols, fnProcessed, candidates);
       }
       // If we have a for, while, do-while, etc.
       else if (LoopStmt* loop = toLoopStmt(node)) {
@@ -11836,15 +11862,15 @@ static void areSymbolsUsedInBlock(BlockStmt * block,
           }
         }
         INT_ASSERT(b != NULL);
-        areSymbolsUsedInBlock(b, matchCall, doDependencyChecks, foundDependency, symbols, fnProcessed);
+        areSymbolsUsedInBlock(b, matchCall, doDependencyChecks, foundDependency, symbols, fnProcessed, candidates);
       }
       // If we hit a BlockStmt, we need to dive into it
       else if (BlockStmt *b = toBlockStmt(node)) {
-        areSymbolsUsedInBlock(b, matchCall, doDependencyChecks, foundDependency, symbols, fnProcessed);
+        areSymbolsUsedInBlock(b, matchCall, doDependencyChecks, foundDependency, symbols, fnProcessed, candidates);
       }
       // DeferStmts have a BlockStmt within them
       else if (DeferStmt *d = toDeferStmt(node)) {
-        areSymbolsUsedInBlock(d->body(), matchCall, doDependencyChecks, foundDependency, symbols, fnProcessed);
+        areSymbolsUsedInBlock(d->body(), matchCall, doDependencyChecks, foundDependency, symbols, fnProcessed, candidates);
       }
       // For CondStmts, look at the then and else blocks. We also need to consider the cond expr
       // itself.
@@ -11856,10 +11882,10 @@ static void areSymbolsUsedInBlock(BlockStmt * block,
           }
         }
         if (c->thenStmt != NULL) {
-          areSymbolsUsedInBlock(c->thenStmt, matchCall, doDependencyChecks, foundDependency, symbols, fnProcessed);
+          areSymbolsUsedInBlock(c->thenStmt, matchCall, doDependencyChecks, foundDependency, symbols, fnProcessed, candidates);
         }
         if (c->elseStmt != NULL) {
-          areSymbolsUsedInBlock(c->elseStmt, matchCall, doDependencyChecks, foundDependency, symbols, fnProcessed);
+          areSymbolsUsedInBlock(c->elseStmt, matchCall, doDependencyChecks, foundDependency, symbols, fnProcessed, candidates);
         }
       }
 
@@ -11881,8 +11907,19 @@ static void areSymbolsUsedInBlock(BlockStmt * block,
         if(Symbol *nodeSym = se->symbol()) {
           for (auto &sym : symbols) {
             if (nodeSym == sym) {
-              *foundDependency = true;
-              return;
+              // before we conclude that we have a dependency, see whether this
+              // is part of an aggregation candidate.
+              for (auto &candidate : candidates) {
+                CallExpr *LHS = toCallExpr(std::get<0>(candidate));
+                if (toCallExpr(se->parentExpr) == LHS) {
+                  // this is an aggregation candidate, so we're OK
+                  continue;
+                }
+                else {
+                  *foundDependency = true;
+                   return;
+                }
+              }
             }
           }
         }
@@ -11899,7 +11936,7 @@ static void areSymbolsUsedInBlock(BlockStmt * block,
               if (call->isNamed(fn->name)) {
                 // fn is the function that node calls
                 fnProcessed.insert(fn);
-                areSymbolsUsedInBlock(fn->body, matchCall, doDependencyChecks, foundDependency, symbols, fnProcessed);
+                areSymbolsUsedInBlock(fn->body, matchCall, doDependencyChecks, foundDependency, symbols, fnProcessed, candidates);
               }
             }
           }
