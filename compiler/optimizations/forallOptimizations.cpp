@@ -306,9 +306,11 @@ static bool callHasValidExpression(CallExpr *ce,
                                    const std::vector<Symbol *> &syms,
                                    std::vector<int> &loopIndexSymsUsed);
 static bool isCallExprBinaryOperator(CallExpr *call);
-static Symbol *isSymbolDefinedInBlock(Symbol *sym,
-                                      BlockStmt *blckStmt,
-                                      bool &isRecField);
+static Symbol *isSymbolDefinedInBlockIE(Symbol *sym,
+                                        BlockStmt *blckStmt,
+                                        bool &isRecField);
+static Symbol *getLastAliasForSymbolIE(Symbol *sym,
+                                       bool &isRecField);
 static ForallStmt *findEnclosingForallLoop(Expr *expr);
 static bool isCallExprValid(CallExpr *call);
 static bool doesExprContainExpr(Expr *expr,
@@ -484,8 +486,8 @@ void doPreNormalizeArrayOptimizations() {
       // Let's only focus on user modules
       if (fOptimizeIrregularArrayAccesses) {
         if (forall->getModule()->modTag == MOD_USER) {
-          //inspectorExecutor(forall);
-          //adaptiveRemotePrefetching(forall);
+          inspectorExecutor(forall);
+          adaptiveRemotePrefetching(forall);
           irregularWriteAggregation(forall);
         }
       }
@@ -3189,6 +3191,22 @@ static void analyzeCandidateIE(CallExpr *call,
     }
     fReportIrregArrayAccesses = oldFReport;
     return;
+  }
+
+  // Let's also ignore cases where A[B[i]] is in an if-statement. That is sort of
+  // a nightmare for the inspector, which would have to ensure that whatever conditions
+  // trigger the if also trigger during the inspector, or just force the if to trigger
+  // always. Either case is kind of nasty, so let's just quit.
+  Expr *curr = call->parentExpr;
+  while (curr != NULL && curr != forall) {
+    if (CondStmt *cond = toCondStmt(curr)) {
+      if (fReportIrregArrayAccesses) {
+        printf("\t\t !!! access cannot be nested in if-statement\n");
+      }
+      fReportIrregArrayAccesses = oldFReport;
+      return;
+    }
+    curr = curr->parentExpr;
   }
 
   // A[B[i]] cannot be nested within two foralls, and the forall it is in
@@ -7483,11 +7501,8 @@ static void getForLoopDomainInfo(ForLoop *f,
     categorize this as NORMAL_REC_FIELD. We also have something like "for i in A.domain"
     and A is "ref A = foo.field" (called DOT_DOMAIN_REC_FIELD). We need to check for
     this as it tells us the actual Symbol we want to track. We have a function called
-    isSymbolDefinedInBlock() that will determine such things, as well as give us the
-    actual symbol we want. But, as the name suggest, its main purpose is to determine
-    whether a given symbol is defined in a block. We normally use it to see whether
-    something is defined in the forall of interest. But for our purposes here, the
-    block we analyze is the block of the outer-most loop we find here.
+    getLastAliasForSymbolIE() that will determine such things, as well as give us the
+    actual symbol we want.
 
     NOTE: we do not do these checks/extractions across function calls.
 
@@ -7582,8 +7597,7 @@ static bool extractAllLoopSyms(CallExpr *call,
   } /* end of for expr */
 
   // Now we want to refine our iterator syms/types by determining whether we have aliases
-  // to record fields, etc. We do this by calling isSymbolDefinedInBlock, using the body
-  // of the last loop we found above.
+  // to record fields, etc. We do this by calling getLastAliasForSymbolIE.
   BlockStmt *body = NULL;
   if (ForLoop *f = toForLoop(lastLoop)) {
     for_alist(fnode, f->body) {
@@ -7601,12 +7615,11 @@ static bool extractAllLoopSyms(CallExpr *call,
     Symbol *sym = elem.first;
     ieIndexIteratorType iterType = elem.second;
     bool isRecField = false;
-    Symbol *alias = isSymbolDefinedInBlock(sym,
-                                           body,
-                                           isRecField);
+    Symbol *alias = getLastAliasForSymbolIE(sym,
+                                            isRecField);
     if (alias == NULL) {
       if (fReportIrregArrayAccesses) {
-        printf("\t\t !!! index iterator %s is defined as a var inside of the loop\n", sym->name);
+        printf("\t\t !!! could not analyze index iterator %s\n", sym->name);
       }
       return false;
     }
@@ -7745,9 +7758,9 @@ static bool isLoopDomainValidIE(CallExpr *call,
     // If this returns NULL, then we have an invalid symbol (it's
     // defined in the loop as a var and not a ref).
     bool isRecField = false;
-    Symbol *alias = isSymbolDefinedInBlock(optInfo.ieIndexIterator,
-                                           loopBody,
-                                           isRecField);
+    Symbol *alias = isSymbolDefinedInBlockIE(optInfo.ieIndexIterator,
+                                             loopBody,
+                                             isRecField);
 
     if (alias == NULL) {
       if (fReportIrregArrayAccesses) {
@@ -7955,9 +7968,9 @@ static bool isCallExprBinaryOperator(CallExpr *call)
     Symbol * -> the Symbol at the "end" of the aliases if it is not defined
     in blckStmt, NULL otherwise
 */
-static Symbol *isSymbolDefinedInBlock(Symbol *sym,
-                                      BlockStmt *blckStmt,
-                                      bool &isRecField)
+static Symbol *isSymbolDefinedInBlockIE(Symbol *sym,
+                                        BlockStmt *blckStmt,
+                                        bool &isRecField)
 {
   Symbol *retval = sym;
   // Is sym defined in the block?
@@ -7977,7 +7990,7 @@ static Symbol *isSymbolDefinedInBlock(Symbol *sym,
           if (SymExpr *symexpr = toSymExpr(call->get(1))) {
             isRecField = true;
             aliasSym = (toSymExpr(call->get(1)))->symbol();
-            Symbol *tmp = isSymbolDefinedInBlock(aliasSym, blckStmt, isRecField);
+            Symbol *tmp = isSymbolDefinedInBlockIE(aliasSym, blckStmt, isRecField);
             // If tmp == aliasSym, then it means we found the end of the alias
             // chain, where aliasSym is defined outside of the body. Normally we'd
             // return the Symbol at the end of the chain, but in the case here, that
@@ -7997,7 +8010,7 @@ static Symbol *isSymbolDefinedInBlock(Symbol *sym,
       else {
         // Simple case of ref B = foo, where we want to analyze foo.
         aliasSym = (toSymExpr(sym->defPoint->init))->symbol();
-        retval = isSymbolDefinedInBlock(aliasSym, blckStmt, isRecField);
+        retval = isSymbolDefinedInBlockIE(aliasSym, blckStmt, isRecField);
       }
     }
     else {
@@ -8008,8 +8021,70 @@ static Symbol *isSymbolDefinedInBlock(Symbol *sym,
 
   return retval;
 
-} /* end of isSymbolDefinedInBlock */
+} /* end of isSymbolDefinedInBlockIE */
 
+//##################################################################################
+/*
+    Given a Symbol sym, find the last alias for it in the alias chain, if there is
+    one. This is essentially a subroutine of isSymbolDefinedInBlockIE, but we don't
+    care about whether sym is defined in a block or not. This is called as part of
+    the IE normalization pass where we want to gather all aliases to the different
+    loop index symbols. The fact that we determined at they were loop index symbols
+    already means that they are "valid" in terms of their DefPoints w.r.t. the loop.
+
+    Arguments:
+    sym -> the Symbol to analyze
+    isRecField -> set to true if the alias leads to a record field.
+
+    Return:
+    the last alias Symbol in the chain
+*/
+static Symbol *getLastAliasForSymbolIE(Symbol *sym,
+                                       bool &isRecField)
+{
+  Symbol *retval = sym;
+  VarSymbol* var = toVarSymbol(sym->defPoint->sym);
+  // Is sym a ref variable?
+  if (var != NULL && var->hasFlag(FLAG_REF_VAR)) {
+    Symbol *aliasSym = NULL;
+    Expr *expr = sym->defPoint->init;
+    // Handle case when we have ref B = rec.foo. We want to see whether
+    // rec is defined inside the block.
+    // NOTE: if we have something like ref B = R[i].foo, we will not find R.
+    // We will just abort in this case.
+    if (CallExpr *call = toCallExpr(expr)) {
+      if (call->isNamedAstr(astrSdot)) {
+        // aliasSym would be the class/object (LHS of the ".")
+        if (SymExpr *symexpr = toSymExpr(call->get(1))) {
+          isRecField = true;
+          aliasSym = (toSymExpr(call->get(1)))->symbol();
+          Symbol *tmp = getLastAliasForSymbolIE(aliasSym, isRecField);
+          // If tmp == aliasSym, then it means we found the end of the alias
+          // chain, where aliasSym is defined outside of the body. Normally we'd
+          // return the Symbol at the end of the chain, but in the case here, that
+          // would be the class/object (rec). We can't get a domain symbol from that,
+          // so instead return the last "valid" Symbol. In the case of ref B = rec.foo,
+          // that would be B.
+          if (tmp != aliasSym) {
+            retval = tmp;
+          }
+        }
+        else {
+          // we have some form of "." that we cannot handle
+          return NULL;
+        }
+      }
+    }
+    else {
+      // Simple case of ref B = foo, where we want to analyze foo.
+      aliasSym = (toSymExpr(sym->defPoint->init))->symbol();
+      retval = getLastAliasForSymbolIE(aliasSym, isRecField);
+    }
+  }
+
+  return retval;
+ 
+} /* end of getLastAliasForSymbolIE */
 
 //##################################################################################
 /*
