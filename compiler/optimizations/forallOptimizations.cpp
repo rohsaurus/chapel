@@ -11591,13 +11591,10 @@ static void analyzeCandidateIWA(CallExpr *call,
 /*
     Given a CallExpr that is the A[B[i]] we are analyzing, determine whether the
     operation performed on it is something we can aggregate. For now, we specifically
-    look for +=, .add() and =.
-
-    TODO: Going forward, we could relax this and just try to exclude operations that we
-    know are not associative/safe to aggregate (like -=). But at the same time, the fact
-    that the user put the operation in a forall is an assertion on their part that the
-    iterations are order-independent. For now, we'll just stick with the operations above
-    since those are the ones we have test-cases for.
+    look for +=, .add() and =. In general, we can support any operator that is
+    order independent. So things like &=, |=, etc will work. But those can be
+    added here on a case-by-case basis (I don't see those very often in the applications
+    I study).
 
     Arguments:
     call -> the CallExpr to analyze

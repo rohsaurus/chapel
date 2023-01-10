@@ -48,9 +48,6 @@ module RemoteWriteAggregation
         purposes, it seems a smaller buffer size is better than what it used
         in CopyAggregation.chpl. Also, we'll use different env variables so we
         don't conflict with the existing ones.
-
-        TODO: test our apps on swan to see how the buffer size for ugni is
-        reacting.
     */
     private param defaultBuffSize = if CHPL_COMM == "ugni" then 128 else 128;
     private const yieldFrequency = getEnvInt("CHPL_IRREG_AGGREGATION_YIELD_FREQUENCY", 1024);
@@ -349,7 +346,7 @@ module RemoteWriteAggregation
 
     //#########################################################################//
     //                                                                         //
-    //              The  AtomicAddAggregator record                            //
+    //              The AtomicAddAggregator record                            //
     //                                                                         //
     //#########################################################################//
     /*

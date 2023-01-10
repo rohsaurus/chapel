@@ -74,6 +74,13 @@ module AutoRemoteWriteAggregation {
   // not support aggregator on atomics when CHPL_COMM is ugni. This is because
   // ugni/Aries has network atomics which have a lot of overhead when performed
   // locally (which is what aggregation will do).
+  //
+  // Also note that we specifically enforce that associative domains have parallel
+  // safety enabled. This is not really required for aggregation, as parallel updates
+  // to the domain would be the responsibility of the user and would be present whether
+  // we used aggregation or not. But for now, let's just keep it, since I don't imagine
+  // the case where users specifically turned off parallel safety and then made a forall
+  // loop to do parallel updates is very common.
   pragma "aggregator generator"
   proc chpl__irregWriteAggregatorGeneral(arr: [] ?eltType, type opRec) where isPODType(eltType) ||
                                                                              (isDomainType(arr.eltType) &&
