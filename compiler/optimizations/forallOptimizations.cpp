@@ -3488,7 +3488,8 @@ static void optimizeLoopARP(ForallStmt *forall)
 
     // TODO NEW: create an if-then statement that checks whether the prefetch
     // distance is NOT -1. If it is not -1, then we'll do all the prefetching
-    // stuff. Otherwise, we'll just do the original access.
+    // stuff. Otherwise, we'll just do the original access. We are setting the distance
+    // to -1 when we encounter too many useless prefetches.
     Expr *distCheck = new CallExpr(">", candidate.prefetchDistance, new_IntSymbol(0));
     BlockStmt *thenBlock = new BlockStmt();
     CondStmt *cond = new CondStmt(distCheck, thenBlock);
@@ -4113,7 +4114,9 @@ static void createConstVariablesARP(ForallStmt *forall,
     loop that contains the candidate access; when it hits numSampleIterations, then
     we attempt to adjust the prefetch distance. The window variable is another prefetch 
     adjustment parameter that is used within adjustPrefetchDistance. It is initialized 
-    to 0 as well.
+    to 0 as well. Finally, we add a stopCount variable initialized to 0. This is used
+    to keep track of how many consecutive adjust intervals we've seen where we had
+    too many useless prefetches.
 
     TODO: It may not be necessary to give each candidate its own count variable. If
     there are two candidates nested in the same forall (or for-loop), they can share
@@ -4299,8 +4302,7 @@ static void createPrefetchAdjustmentCheck(ForallStmt *forall,
   elseBlock->insertAtHead(adjustDist);
   elseBlock->insertAtTail(new CallExpr("=", candidate.iterCount, new_IntSymbol(0)));
 
-  // if-then-else goes at beginning of the staticCheck then-block
-  //candidate.staticCond->thenStmt->insertAtHead(cond);
+  // if-then-else goes at beginning of the distCond then-block
   candidate.distCond->thenStmt->insertAtHead(cond);
 
 } /* end of createPrefetchAdjustmentCheck */
@@ -4339,12 +4341,11 @@ static void createOutOfBoundsCheckARP(ForallStmt *forall,
 
   // 2.) Create the if-then structure for the out of bounds check:
   //     if we're not out of bounds, do the prefetch. This goes in the then-block
-  //     of our staticCheck from createStaticCheckARP(). The prefetch call itself
+  //     of our distance != -1 check/condition. The prefetch call itself
   //     will be added in createPrefetchCallARP()
   Expr *outOfBoundsCond = new CallExpr("<=", prefetchIndex, candidate.lastValidIndex);
   BlockStmt *thenBlock = new BlockStmt();
   CondStmt *cond = new CondStmt(outOfBoundsCond, thenBlock, NULL);
-  //candidate.staticCond->thenStmt->insertAtTail(cond);
   candidate.distCond->thenStmt->insertAtTail(cond);
   candidate.outOfBoundsCond = cond;
 
@@ -4390,22 +4391,24 @@ static void createOutOfBoundsCheckARP(ForallStmt *forall,
         const lastValidIndex = getLastLoopIndex(..);
         const loopStride = getLoopStride(..);
         const numSampleIterations = getPrefetchSampleSize(..);
-        forall i in ... with (var prefetchDistance, var count, var window) {
+        forall i in ... with (var prefetchDistance, var count, var window, var stopCount) {
             param staticPrefetchCheck = chpl__isPrefetchSupported(..);
             if staticPrefetchCheck == true {
-                if count < numSampleIterations {
-                    count += 1
-                }
-                else {
-                    adjustPrefetchDistance(prefetchDistance, window);
-                    count = 0;
-                }
-                if (i+(prefetchDistance * loopStride)) <= lastValidIndex {
-                    if isArray(loopIteratorSym) {
-                        prefetch for array
+                if prefetchDistance > 0 {
+                    if count < numSampleIterations {
+                        count += 1
                     }
                     else {
-                        prefetch for domains and ranges
+                        adjustPrefetchDistance(prefetchDistance, window, stopCount);
+                        count = 0;
+                    }
+                    if (i+(prefetchDistance * loopStride)) <= lastValidIndex {
+                        if isArray(loopIteratorSym) {
+                            prefetch for array
+                        }
+                        else {
+                            prefetch for domains and ranges
+                        }
                     }
                 }
             }
@@ -4454,11 +4457,6 @@ static void createPrefetchCallARP(ForallStmt *forall,
   //     offset is (prefetchDistance*loopStride) and "idx" is the prefetch index that
   //     our custom iterator yields us. That is why we needed the above param guard
   //     to figure out if we have an array or not.
-  //
-  // TODO: if we have a field access to A[B[i]], we can try to detect that and
-  //       issue the prefetch from that field. May be a bit hard to nail this down
-  //       during normalization, so maybe there will be a way to do it during prefolding
-  //       and modify the prefetch call there.
   //
   // First, create the prefetch call assuming we don't have an array. Make a copy of parentCall
   // and look at all SymExprs that use candidate.originalIter_idx. Update those to be CallExprs
