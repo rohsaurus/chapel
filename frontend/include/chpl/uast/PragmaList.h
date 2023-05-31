@@ -45,6 +45,11 @@ PRAGMA(AGG_GENERATOR, ypr,
        "aggregator generator",
        "this function generates and returns an aggregator")
 
+// Added by tbrolin
+PRAGMA(REMOTE_CACHE_PREFETCH, ypr,
+       "remote cache prefetch",
+       "this is the procedure for a remote cache prefetch")
+
 // Indicates an array implementation class can alias other array implementations
 // e.g. array views
 PRAGMA(ALIASING_ARRAY, ypr, "aliasing array", ncm)

@@ -1811,6 +1811,9 @@ CallResolutionResult resolvePrimCall(ResolutionContext* rc,
     case PRIM_CHECK_CONST_ARG_HASH:
     case PRIM_TASK_PRIVATE_SVAR_CAPTURE:
       CHPL_UNIMPL("misc primitives");
+    // added by tbrolin
+    case PRIM_MAYBE_PREFETCH_CANDIDATE:
+      CHPL_ASSERT(false && "not implemented yet");
 
     // no default to get a warning when new primitives are added
   }

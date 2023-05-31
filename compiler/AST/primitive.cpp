@@ -1082,7 +1082,8 @@ initPrimitive() {
   prim_def(PRIM_MAYBE_AGGREGATE_ASSIGN, "may be aggregated assignment", returnInfoUnknown);
 
   prim_def(PRIM_PROTO_SLICE_ASSIGN, "assign proto slices", returnInfoVoid);
-
+  // Added by tbrolin
+  prim_def(PRIM_MAYBE_PREFETCH_CANDIDATE, "may be candidate for prefetching", returnInfoUnknown);
   prim_def(PRIM_ERROR, "error", returnInfoVoid, true);
   prim_def(PRIM_WARNING, "warning", returnInfoVoid, true);
   prim_def(PRIM_WHEN, "when case expressions", returnInfoVoid);

@@ -79,6 +79,9 @@ module ChapelStandard {
   public use ChapelRemoteVars;
   public use ChapelArrayViewElision;
 
+  // added by tbrolin
+  public use AdaptiveRemoteCachePrefetching;
+
   // Standard modules.
   public use Types as Types;
   public use AutoMath as AutoMath;

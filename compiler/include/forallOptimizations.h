@@ -68,6 +68,11 @@ Expr *preFoldMaybeLocalArrElem(CallExpr *call);
 Expr *preFoldMaybeAggregateAssign(CallExpr *call);
 void adjustPrimsInFastFollowerBody(BlockStmt *body);
 
+// Added by tbrolin
+CallExpr *preFoldMaybePrefetchingCandidate(CallExpr *call);
+void adaptiveRemotePrefetchingPostAnalysis();
+void pruneArrayFieldsToDomainFieldsMap();
+
 void finalizeForallOptimizationsResolution();
 
 // interface for lowerForalls

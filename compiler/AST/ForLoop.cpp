@@ -413,6 +413,8 @@ ForLoop::ForLoop() : LoopStmt(0)
   mLoweredForall = false;
   mIsForExpr = false;
   fShadowVars.parent = this;
+  // added by tbrolin
+  forLoopInfoGathered = false;
 }
 
 ForLoop::ForLoop(VarSymbol* index,
@@ -428,6 +430,8 @@ ForLoop::ForLoop(VarSymbol* index,
   mLoweredForall = isLoweredForall;
   mIsForExpr = isForExpr;
   fShadowVars.parent = this;
+  // added by tbrolin
+  forLoopInfoGathered = false;
 }
 
 ForLoop* ForLoop::copyInner(SymbolMap* map)
