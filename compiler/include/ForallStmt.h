@@ -23,12 +23,134 @@
 
 #include "stmt.h"
 
+// added by tbrolin
+#include <tuple>
+
 enum ForallAutoLocalAccessCloneType {
   NOT_CLONE,
   NO_OPTIMIZATION,
   STATIC_ONLY,
   STATIC_AND_DYNAMIC
 };
+
+// added by tbrolin
+enum PrefetchLoopIteratorType {
+  INVALID_LOOP_TYPE,
+  ARRAY_OR_DOMAIN,
+  EXPLICIT_DOMAIN,
+  RANGE
+};
+enum LoopRangeOperatorType {
+  COUNT_OPERATOR,
+  NUDGE_HIGH_BOUND,
+  NO_OPERATOR,
+  NOT_A_RANGE
+};
+
+// added by tbrolin 09/14/2022
+// struct to encapsulate a prefetch candidate
+typedef struct AdaptiveRemotePrefetchingCandidate {
+  // if the candidate is in a ForLoop, record that
+  // so we can get anything we need from it later.
+  // If it is not in a for loop, this is NULL.
+  ForLoop *forloop;
+
+  // the stride of the loop/access as specified via
+  // a "by" clause. This is NULL if there is no by clause.
+  // Note that this can be a literal (a SymExpr) or an
+  // expression (CallExpr).
+  Expr *byClauseStride;
+
+  // the type of the loop iterator. We allow the loop
+  // the iterate over an array or domain object, a "dot domain",
+  // or a range.
+  PrefetchLoopIteratorType loopIteratorType;
+
+  // the loop iterator if we are iterating over an array or domain.
+  // If the loopIteratorType is ARRAY_OR_DOMAIN, than this is "foo"
+  // from "for i in foo". If the type is EXPLICIT_DOMAIN, than this
+  // is "bar" from "for i in bar.domain". If the type is RANGE, then
+  // this is NULL;
+  Symbol *loopIteratorSym;
+
+  // The A[expr(B[expr])] call expression. In other words,
+  // the entire access of interest.
+  CallExpr *parentCall;
+
+  // The B[expr] portion of parentCall.
+  CallExpr *call;
+
+  // Set of Symbols used in parentCall. So for something like
+  // A[B[i+j+k] * m] we will extract the Symbols for i,j,k,m.
+  // The purpose is to keep these around so when/if we get to
+  // post resolution, we can do some analysis. Specifically,
+  // all of these Symbols must be read-only in the loop that
+  // contains the prefetch candidate.
+  std::set<Symbol *>prefetchIndexSymbols;
+
+  // The range operator (#, < or nothing), if there is a range.
+  // We need to know this to effectively compute the bounds of
+  // the loop
+  LoopRangeOperatorType loopRangeOperator;
+
+  // The start of the range, if we're iterating over a range.
+  // NULL otherwise
+  Expr *rangeStart;
+
+  // The end of the range, if we're iterating oer a range.
+  // NULL otherwise
+  Expr *rangeEnd;
+
+  // The index variable now yielded by the custom iterator, if
+  // we applied one. This is NULL if we did not need to apply it
+  VarSymbol *prefetchIter_idx;
+
+  // The original loop index variable yielded by the iterator.
+  // We will probably want access to this when we create the
+  // prefetch call. 
+  Symbol *originalIter_idx;
+
+  // The prefetch distance Symbol for this candidate. It is a shadow
+  // variable as part of the forall. We also have shadow variables for
+  // the iteration count and window
+  ShadowVarSymbol *prefetchDistance;
+
+  ShadowVarSymbol *iterCount;
+  ShadowVarSymbol *window;
+  ShadowVarSymbol *distArr;
+  ShadowVarSymbol *stopCount;
+
+  // Unique ID given to the candidate
+  int ID;
+
+  // VarSymbols for the loopStride and lastValidIndex. We'll
+  // refer to these when inserting calls to Chapel functions to
+  // support the optimization. We also have a VarSymbol for the
+  // number of sample iterations to run before adjusting the distance.
+  VarSymbol *loopStride;
+  VarSymbol *lastValidIndex;
+  VarSymbol *numSampleIterations;
+
+  // The static check variable used to "control" whether the
+  // optimization will be performed or not. We also have the
+  // CondStmt it is used in
+  VarSymbol *staticCheck;
+  CondStmt *staticCond;
+
+  // This is the CondStmt that says whether we are doing prefetching
+  // or not as a result of the timeout we have (we set the distance
+  // to -1 if we encountered too many useless prefetches).
+  CondStmt *distCond;
+
+  // CondStmt for the out-of-bounds check
+  CondStmt *outOfBoundsCond;
+
+  // CondStmt for isArray() check when we had
+  // an iterator type of ARRAY_OR_DOMAIN
+  CondStmt *isArrayCond;
+
+} AdaptiveRemotePrefetchingCandidate;
+
 
 class ForallOptimizationInfo {
   public:
@@ -48,6 +170,14 @@ class ForallOptimizationInfo {
     // calls in the loop that are candidates for optimization
     std::vector< std::pair<CallExpr *, int> > staticCandidates;
     std::vector< std::pair<CallExpr *, int> > dynamicCandidates;
+
+    // added by tbrolin
+    // Flag that says whether the forall has been checked by the
+    // adaptive remote prefetching optimization
+    bool adaptiveRemotePrefetchingChecked;
+    int arpID;
+    // Holds candidate accesses for adaptive remote prefetching.
+    std::vector<AdaptiveRemotePrefetchingCandidate> adaptiveRemotePrefetchingCandidates;
 
     // the static check control symbol added for symbol
     std::map<Symbol *, Symbol *> staticCheckSymForSymMap;

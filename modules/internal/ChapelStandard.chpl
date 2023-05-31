@@ -73,6 +73,9 @@ module ChapelStandard {
   public use ChapelAutoAggregation;
   public use ChapelGpuSupport;
 
+  // added by tbrolin
+  public use AdaptiveRemoteCachePrefetching;
+
   // Standard modules.
   public use Types as Types;
   public use AutoMath as AutoMath;

@@ -885,6 +885,27 @@ static Expr* preFoldPrimOp(CallExpr* call) {
     break;
   }
 
+  // added by tbrolin
+  case PRIM_MAYBE_PREFETCH_CANDIDATE: {
+    // For Adaptive Remote prefetching (ARP), the primitive
+    // is always on the RHS, like the IE optimization. So
+    // do the same thing regarding what is returned. If we
+    // get to prefolding for ARP, the optimization is valid
+    // (i.e., the checks we do will not invalidate the opt).
+    CallExpr *parentCall = toCallExpr(call->parentExpr);
+    INT_ASSERT(parentCall != NULL);
+    INT_ASSERT(parentCall->isPrimitive(PRIM_MOVE));
+    retval = preFoldMaybePrefetchingCandidate(call);
+    call->replace(retval);
+    BlockStmt *dummyBlock = new BlockStmt();
+    parentCall->insertAfter(dummyBlock);
+    dummyBlock->insertAtTail(parentCall->remove());
+    normalize(dummyBlock);
+    resolveBlockStmt(dummyBlock);
+    dummyBlock->flattenAndRemove();
+    break;
+  }
+
   case PRIM_CALL_RESOLVES:
   case PRIM_CALL_AND_FN_RESOLVES:
   case PRIM_METHOD_CALL_RESOLVES:

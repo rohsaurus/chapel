@@ -199,6 +199,10 @@ bool fReportAutoLocalAccess= false;
 bool fAutoAggregation = false;
 bool fReportAutoAggregation= false;
 
+// Added by tbrolin
+bool fOptimizeIrregularArrayAccesses = false;
+bool fReportIrregArrayAccesses = false;
+
 bool  printPasses     = false;
 FILE* printPassesFile = NULL;
 
@@ -1084,6 +1088,8 @@ static ArgumentDescription arg_desc[] = {
  {"live-analysis", ' ', NULL, "Enable [disable] live variable analysis", "n", &fNoLiveAnalysis, "CHPL_DISABLE_LIVE_ANALYSIS", NULL},
  {"loop-invariant-code-motion", ' ', NULL, "Enable [disable] loop invariant code motion", "n", &fNoLoopInvariantCodeMotion, NULL, NULL},
  {"optimize-forall-unordered-ops", ' ', NULL, "Enable [disable] optimization of foralls to unordered operations", "n", &fNoOptimizeForallUnordered, "CHPL_DISABLE_OPTIMIZE_FORALL_UNORDERED_OPS", NULL},
+// Added by tbrolin
+ {"optimize-irregular-array-accesses", ' ', NULL, "Enable [disable] optimizations for irregular array accesses", "N", &fOptimizeIrregularArrayAccesses, "CHPL_OPTIMIZE_IRREGULAR_ARRAY_ACCESSES", NULL},
  {"optimize-range-iteration", ' ', NULL, "Enable [disable] optimization of iteration over anonymous ranges", "n", &fNoOptimizeRangeIteration, "CHPL_DISABLE_OPTIMIZE_RANGE_ITERATION", NULL},
  {"optimize-loop-iterators", ' ', NULL, "Enable [disable] optimization of iterators composed of a single loop", "n", &fNoOptimizeLoopIterators, "CHPL_DISABLE_OPTIMIZE_LOOP_ITERATORS", NULL},
  {"optimize-on-clauses", ' ', NULL, "Enable [disable] optimization of on clauses", "n", &fNoOptimizeOnClauses, "CHPL_DISABLE_OPTIMIZE_ON_CLAUSES", NULL},
@@ -1228,6 +1234,8 @@ static ArgumentDescription arg_desc[] = {
  {"report-optimized-on", ' ', NULL, "Print information about on clauses that have been optimized for potential fast remote fork operation", "F", &fReportOptimizedOn, NULL, NULL},
  {"report-auto-local-access", ' ', NULL, "Enable compiler logs for auto local access optimization", "N", &fReportAutoLocalAccess, "CHPL_REPORT_AUTO_LOCAL_ACCESS", NULL},
  {"report-auto-aggregation", ' ', NULL, "Enable compiler logs for automatic aggregation", "N", &fReportAutoAggregation, "CHPL_REPORT_AUTO_AGGREGATION", NULL},
+// added by tbrolin
+ {"report-irregular-array-access", ' ', NULL, "Enable compiler logs for irregular array access optimization", "N", &fReportIrregArrayAccesses, "CHPL_REPORT_IRREGULAR_ARRAY_ACCESSES", NULL},
  {"report-optimized-forall-unordered-ops", ' ', NULL, "Show which statements in foralls have been converted to unordered operations", "F", &fReportOptimizeForallUnordered, NULL, NULL},
  {"report-promotion", ' ', NULL, "Print information about scalar promotion", "F", &fReportPromotion, NULL, NULL},
  {"report-scalar-replace", ' ', NULL, "Print scalar replacement stats", "F", &fReportScalarReplace, NULL, NULL},

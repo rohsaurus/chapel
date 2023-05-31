@@ -35,6 +35,9 @@
 
 #include "global-ast-vecs.h"
 
+// added by tbrolin
+#include "forallOptimizations.h"
+
 static void clearDefaultInitFns(FnSymbol* unusedFn) {
   AggregateType* at = toAggregateType(unusedFn->retType);
   if (at) {
@@ -1054,4 +1057,9 @@ void pruneResolvedTree() {
   cleanupNothingVarsAndFields();
 
   cleanupAfterRemoves();
+
+  // added by tbrolin
+  // cleans up the global gArrFieldsToDomFields map
+  // to remove AggregateTypes that will be NULL'd
+  pruneArrayFieldsToDomainFieldsMap();
 }

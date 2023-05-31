@@ -37,6 +37,11 @@
 
 #include "global-ast-vecs.h"
 
+// added by tbrolin
+// Declares the adaptiveRemotePrefetchingPostAnalysis()
+// function that we call from here.
+#include "forallOptimizations.h"
+
 /* This pass implements a backwards (uses to defs) analysis
    to determine if certain reference Symbols are constant.
 
@@ -1620,6 +1625,12 @@ void cullOverReferences() {
 
   // Pass off to `resolution/lateConstCheck`.
   ctx.performLateConstCheck();
+
+  // added by tbrolin
+  // perform post-analysis for adaptive remote prefetching
+  if (fOptimizeIrregularArrayAccesses) {
+    adaptiveRemotePrefetchingPostAnalysis();
+  }
 }
 
 // Handle certain degenerate cases, such as when a

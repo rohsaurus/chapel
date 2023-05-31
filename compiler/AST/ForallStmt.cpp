@@ -69,6 +69,10 @@ ForallStmt::ForallStmt(BlockStmt* body):
   optInfo.autoLocalAccessChecked = false;
   optInfo.hasAlignedFollowers = false;
 
+  // added by tbrolin
+  optInfo.adaptiveRemotePrefetchingChecked = false;
+  optInfo.arpID = -99;
+
   gForallStmts.add(this);
 }
 
@@ -96,6 +100,10 @@ ForallStmt* ForallStmt::copyInner(SymbolMap* map) {
   _this->fRecIterGetIterator  = COPY_INT(fRecIterGetIterator);
   _this->fRecIterFreeIterator = COPY_INT(fRecIterFreeIterator);
   _this->fZipCall             = COPY_INT(fZipCall);
+
+  // added by tbrolin: copy over certain things when we clone
+  // a forall
+  _this->optInfo.arpID = optInfo.arpID;
 
   return _this;
 }
