@@ -730,6 +730,13 @@ struct rdcache_s {
   int64_t this_cache_num_prefetches_unused;
   int64_t this_cache_num_prefetches_waited;
   int64_t this_cache_num_prefetches_useless;
+  // per-cache hit/miss counter for gets. We don't have a separate
+  // counter for total gets. CommDiagnostics has that but for the
+  // entire locale, and that counter is incremented outside of this
+  // file (chpl-cache.c). But we can get what we want by adding
+  // the hits and misses together.
+  int64_t this_cache_num_get_hits;
+  int64_t this_cache_num_get_misses;
 
   // Lookup table
   __attribute__ ((aligned (64)))
@@ -3938,10 +3945,16 @@ void chpl_cache_comm_get(void *addr, c_nodeid_t node, void* raddr,
                        0, commID, ln, fn);
 
   if (size != 0) {
-    if (all_hits)
+    if (all_hits) {
+      // added by tbrolin
+      cache->this_cache_num_get_hits++;
       chpl_comm_diags_incr(cache_get_hits);
-    else
+    }
+    else {
+      // added by tbrolin
+      cache->this_cache_num_get_misses++;
       chpl_comm_diags_incr(cache_get_misses);
+    }
   }
 
   return;
@@ -4304,6 +4317,13 @@ void reset_per_cache_prefetch_counters(void)
   cache->this_cache_num_prefetches_waited = 0;
   cache->this_cache_num_prefetches_useless = 0;
 }
+void reset_per_cache_get_counters(void)
+{
+  struct rdcache_s* cache = tls_cache_remote_data();
+  if (!cache) return;
+  cache->this_cache_num_get_hits = 0;
+  cache->this_cache_num_get_misses = 0;
+}
 int64_t get_per_cache_num_prefetches(void)
 {
   struct rdcache_s* cache = tls_cache_remote_data();
@@ -4333,6 +4353,18 @@ int64_t get_per_cache_num_prefetches_completed(void)
   struct rdcache_s* cache = tls_cache_remote_data();
   if (!cache) return 0;
   return cache->this_cache_num_prefetches_completed;
+}
+int64_t get_per_cache_num_get_hits(void)
+{
+  struct rdcache_s* cache = tls_cache_remote_data();
+  if (!cache) return 0;
+  return cache->this_cache_num_get_hits;
+}
+int64_t get_per_cache_num_get_misses(void)
+{
+  struct rdcache_s* cache = tls_cache_remote_data();
+  if (!cache) return 0;
+  return cache->this_cache_num_get_misses;
 }
 
 #endif

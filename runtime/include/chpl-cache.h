@@ -131,11 +131,14 @@ int chpl_cache_pagesize(void);
 // added by tbrolin
 // Functions we call to reset/get per-cache prefetch counters
 void reset_per_cache_prefetch_counters(void);
+void reset_per_cache_get_counters(void);
 int64_t get_per_cache_num_prefetches(void);
 int64_t get_per_cache_num_prefetches_unused(void);
 int64_t get_per_cache_num_prefetches_waited(void);
 int64_t get_per_cache_num_prefetches_useless(void);
 int64_t get_per_cache_num_prefetches_completed(void);
+int64_t get_per_cache_num_get_hits(void);
+int64_t get_per_cache_num_get_misses(void);
 
 // For debugging.
 void chpl_cache_print(void);

@@ -104,12 +104,52 @@ module AdaptiveRemoteCachePrefetching {
     //
     // extern for the C functions we will call
     extern proc reset_per_cache_prefetch_counters();
+    extern proc reset_per_cache_get_counters();
     extern proc get_per_cache_num_prefetches() : int;
     extern proc get_per_cache_num_prefetches_unused() : int;
     extern proc get_per_cache_num_prefetches_waited() : int;
     extern proc get_per_cache_num_prefetches_useless() : int;
     extern proc get_per_cache_num_prefetches_completed() : int;
+    extern proc get_per_cache_num_get_hits() : int;
+    extern proc get_per_cache_num_get_misses() : int;
     
+    // Not directly related to prefetches but useful to see how prefetches
+    // are helping us.
+    inline proc per_cache_num_get_hits()
+    {
+        return get_per_cache_num_get_hits();
+    }
+    inline proc per_cache_num_get_misses()
+    {
+        return get_per_cache_num_get_misses();
+    }
+    inline proc reset_get_counters()
+    {
+        coforall loc in Locales do on loc {
+            coforall tid in 1..loc.maxTaskPar {
+                reset_per_cache_get_counters();
+            }
+        }
+    }
+    inline proc get_total_get_rates()
+    {
+        var totalHits = 0;
+        var totalMisses = 0;
+        coforall loc in Locales with (+reduce totalHits, +reduce totalMisses) do on loc {
+            coforall tid in 1..loc.maxTaskPar with (+reduce totalHits, +reduce totalMisses) {
+                totalHits += per_cache_num_get_hits();
+                totalMisses += per_cache_num_get_misses();
+            }
+        }
+        var totalGets = totalHits + totalMisses;
+        if (totalGets <= 0) {
+            return (0, 0);
+        }
+        var hitRate = (totalHits:real / totalGets)*100.0;
+        var missRate = (totalMisses:real / totalGets)*100.0;
+        return (hitRate, missRate);
+    }
+
     inline proc reset_prefetch_counters()
     {
         coforall loc in Locales do on loc {
