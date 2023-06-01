@@ -723,18 +723,14 @@ struct rdcache_s {
   // versions for the existing counters that CommDiagnostics provides. We want
   // per-cache counters so we can make them non-atomic (and we also
   // want to gather per-thread/task cache info). Note that by
-  // "prefetces" here we mean user directed prefetches, not ones
+  // "prefetches" here we mean user directed prefetches, not ones
   // performed automatically by the remote cache itself.
   int64_t this_cache_num_prefetches;
   int64_t this_cache_num_prefetches_completed;
   int64_t this_cache_num_prefetches_unused;
   int64_t this_cache_num_prefetches_waited;
   int64_t this_cache_num_prefetches_useless;
-  // per-cache hit/miss counter for gets. We don't have a separate
-  // counter for total gets. CommDiagnostics has that but for the
-  // entire locale, and that counter is incremented outside of this
-  // file (chpl-cache.c). But we can get what we want by adding
-  // the hits and misses together.
+  // per-cache hit/miss counter for gets.
   int64_t this_cache_num_get_hits;
   int64_t this_cache_num_get_misses;
 
@@ -999,11 +995,11 @@ void count_unused_prefetches(struct rdcache_s* cache,
 {
   if((z->prefetch_diags_flags & ENTRY_FLAGS_PREFETCHED) != 0) {
     cache->this_cache_num_prefetches_unused++;
-    chpl_comm_diags_incr(cache_prefetch_unused);
+    //chpl_comm_diags_incr(cache_prefetch_unused);
   }
-  if((z->prefetch_diags_flags & ENTRY_FLAGS_READAHEADED) != 0) {
+  /*if((z->prefetch_diags_flags & ENTRY_FLAGS_READAHEADED) != 0) {
     chpl_comm_diags_incr(cache_readahead_unused);
-  }
+  }*/
   z->prefetch_diags_flags = 0;
 }
 
@@ -2068,11 +2064,11 @@ void count_waited_prefetch(struct rdcache_s* cache,
   if (waited && entry->prefetch_diags_flags != 0) {
     if (entry->prefetch_diags_flags & ENTRY_FLAGS_PREFETCHED) {
       cache->this_cache_num_prefetches_waited++;
-      chpl_comm_diags_incr(cache_prefetch_waited);
+      //chpl_comm_diags_incr(cache_prefetch_waited);
     }
-    if (entry->prefetch_diags_flags & ENTRY_FLAGS_READAHEADED) {
+    /*if (entry->prefetch_diags_flags & ENTRY_FLAGS_READAHEADED) {
       chpl_comm_diags_incr(cache_readahead_waited);
-    }
+    }*/
     entry->prefetch_diags_flags = 0;
   }
 }
@@ -3004,10 +3000,18 @@ int cache_get_in_page(struct rdcache_s* cache,
           cache->completed_request_number) {
         chpl_bool waited = wait_for(cache, entry->max_prefetch_sequence_number);
         count_waited_prefetch(cache, entry, waited);
+        // NEW: if waited is false, then it means we did not have to wait for the data.
+        // We also know that we aren't issuing a prefetch, so this is "true" GET hit
+        if (!waited) { cache->this_cache_num_get_hits++; }
         // note: wait_for can yield, but entry is locked
         // no chance of deadlock since wait_for just processes comm events
         assert(entry->page && entry->entryReservedByTask == task_local);
         assert(entry->base.raddr == ra_page && entry->base.node == node);
+      }
+      else {
+        // NEW: I believe the "else" here is for accesses that we definitely aren't
+        // waiting for. So this would also be a true GET hit
+        cache->this_cache_num_get_hits++;
       }
 
       // Clear the prefetch flags to indicate that the data was used
@@ -3148,14 +3152,14 @@ int cache_get_in_page(struct rdcache_s* cache,
   // Set the flag to indicate whether it was prefetched or readahead-ed
   if (isreadahead && !(entry->prefetch_diags_flags & ENTRY_FLAGS_READAHEADED)) {
     entry->prefetch_diags_flags |= ENTRY_FLAGS_READAHEADED;
-    chpl_comm_diags_incr(cache_num_page_readaheads);
+    //chpl_comm_diags_incr(cache_num_page_readaheads);
   }
   if (isprefetch && !isreadahead && !(entry->prefetch_diags_flags & ENTRY_FLAGS_PREFETCHED)) {
     entry->prefetch_diags_flags |= ENTRY_FLAGS_PREFETCHED;
     // added by tbrolin: increment per-cache counter
     cache->this_cache_num_prefetches++;
     cache->this_cache_num_prefetches_completed++;
-    chpl_comm_diags_incr(cache_num_prefetches);
+    //chpl_comm_diags_incr(cache_num_prefetches);
   }
 
   // Decide what to store in the readahead trigger for this page
@@ -3897,10 +3901,11 @@ void chpl_cache_comm_put(void* addr, c_nodeid_t node, void* raddr,
                        commID, ln, fn);
 
   if (size != 0) {
-    if (all_hits)
+    /*if (all_hits)
       chpl_comm_diags_incr(cache_put_hits);
     else
       chpl_comm_diags_incr(cache_put_misses);
+    */
   }
 
   return;
@@ -3912,7 +3917,6 @@ void chpl_cache_comm_get(void *addr, c_nodeid_t node, void* raddr,
   struct rdcache_s* cache = tls_cache_remote_data();
   chpl_cache_taskPrvData_t* task_local = task_private_cache_data();
   int all_hits;
-
   if (!cache || size_merits_direct_comm(cache, size)) {
     if (cache)
       cache_invalidate(cache, task_local, node, (raddr_t)raddr, size);
@@ -3945,16 +3949,14 @@ void chpl_cache_comm_get(void *addr, c_nodeid_t node, void* raddr,
                        0, commID, ln, fn);
 
   if (size != 0) {
-    if (all_hits) {
-      // added by tbrolin
-      cache->this_cache_num_get_hits++;
+    /*if (all_hits) {
       chpl_comm_diags_incr(cache_get_hits);
-    }
+    }*
     else {
-      // added by tbrolin
-      cache->this_cache_num_get_misses++;
       chpl_comm_diags_incr(cache_get_misses);
-    }
+    }*/
+    if (!all_hits)
+      cache->this_cache_num_get_misses++;
   }
 
   return;

@@ -131,25 +131,26 @@ module AdaptiveRemoteCachePrefetching {
             }
         }
     }
-    inline proc get_total_get_rates()
+    inline proc get_total_get_hits()
     {
         var totalHits = 0;
-        var totalMisses = 0;
-        coforall loc in Locales with (+reduce totalHits, +reduce totalMisses) do on loc {
-            coforall tid in 1..loc.maxTaskPar with (+reduce totalHits, +reduce totalMisses) {
+        coforall loc in Locales with (+reduce totalHits) do on loc {
+            coforall tid in 1..loc.maxTaskPar with (+reduce totalHits) {
                 totalHits += per_cache_num_get_hits();
+            }
+        }
+        return totalHits;
+    }
+    inline proc get_total_get_misses()
+    {
+        var totalMisses = 0;
+        coforall loc in Locales with (+reduce totalMisses) do on loc {
+            coforall tid in 1..loc.maxTaskPar with (+reduce totalMisses) {
                 totalMisses += per_cache_num_get_misses();
             }
         }
-        var totalGets = totalHits + totalMisses;
-        if (totalGets <= 0) {
-            return (0, 0);
-        }
-        var hitRate = (totalHits:real / totalGets)*100.0;
-        var missRate = (totalMisses:real / totalGets)*100.0;
-        return (hitRate, missRate);
+        return totalMisses;
     }
-
     inline proc reset_prefetch_counters()
     {
         coforall loc in Locales do on loc {
