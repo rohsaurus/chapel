@@ -716,18 +716,15 @@ struct rdcache_s {
   cache_seqn_t *pending_sequence_numbers;
 
   // added by tbrolin
-  // counters for the number of prefetches issued "to" this cache,
-  // number of prefetches that were unused, number of prefetches
-  // that were waited on and number of useless prefetches (prefetch
-  // for data that is already in the cache). These are basically per-cache 
-  // versions for the existing counters that CommDiagnostics provides. We want
-  // per-cache counters so we can make them non-atomic (and we also
+  // counters for the number of prefetches issued "to" this cache, the
+  // the number of prefetches that were waited on and the number of useless 
+  // prefetches (prefetch for data that is already in the cache).
+  //
+  // We need per-cache counters so we can make them non-atomic (and we also
   // want to gather per-thread/task cache info). Note that by
   // "prefetches" here we mean user directed prefetches, not ones
   // performed automatically by the remote cache itself.
   int64_t this_cache_num_prefetches;
-  int64_t this_cache_num_prefetches_completed;
-  int64_t this_cache_num_prefetches_unused;
   int64_t this_cache_num_prefetches_waited;
   int64_t this_cache_num_prefetches_useless;
   // per-cache hit/miss counter for gets.
@@ -993,11 +990,10 @@ static
 void count_unused_prefetches(struct rdcache_s* cache,
                              struct cache_entry_s* z)
 {
-  if((z->prefetch_diags_flags & ENTRY_FLAGS_PREFETCHED) != 0) {
-    cache->this_cache_num_prefetches_unused++;
+  /*if((z->prefetch_diags_flags & ENTRY_FLAGS_PREFETCHED) != 0) {
     //chpl_comm_diags_incr(cache_prefetch_unused);
   }
-  /*if((z->prefetch_diags_flags & ENTRY_FLAGS_READAHEADED) != 0) {
+  if((z->prefetch_diags_flags & ENTRY_FLAGS_READAHEADED) != 0) {
     chpl_comm_diags_incr(cache_readahead_unused);
   }*/
   z->prefetch_diags_flags = 0;
@@ -2191,7 +2187,7 @@ void flush_entry(struct rdcache_s* cache,
 
   // If invalidating, clear valid bits.
   if( op & FLUSH_DO_INVALIDATE ) {
-    count_unused_prefetches(cache, entry);
+    //count_unused_prefetches(cache, entry);
     if( len == CACHEPAGE_SIZE ) {
       entry->readahead_skip = 0;
       entry->readahead_len = 0;
@@ -2206,7 +2202,7 @@ void flush_entry(struct rdcache_s* cache,
 
   // If evicting, remove the page from the cache and put it on a free list.
   if( op & FLUSH_DO_EVICT ) {
-    count_unused_prefetches(cache, entry);
+    //count_unused_prefetches(cache, entry);
     // But, our entry no longer can have a page associated with it.
     page = entry->page;
     entry->page = NULL;
@@ -3158,7 +3154,6 @@ int cache_get_in_page(struct rdcache_s* cache,
     entry->prefetch_diags_flags |= ENTRY_FLAGS_PREFETCHED;
     // added by tbrolin: increment per-cache counter
     cache->this_cache_num_prefetches++;
-    cache->this_cache_num_prefetches_completed++;
     //chpl_comm_diags_incr(cache_num_prefetches);
   }
 
@@ -4315,7 +4310,6 @@ void reset_per_cache_prefetch_counters(void)
   struct rdcache_s* cache = tls_cache_remote_data();
   if (!cache) return;
   cache->this_cache_num_prefetches = 0;
-  cache->this_cache_num_prefetches_unused = 0;
   cache->this_cache_num_prefetches_waited = 0;
   cache->this_cache_num_prefetches_useless = 0;
 }
@@ -4332,12 +4326,6 @@ int64_t get_per_cache_num_prefetches(void)
   if (!cache) return 0;
   return cache->this_cache_num_prefetches;
 }
-int64_t get_per_cache_num_prefetches_unused(void)
-{
-  struct rdcache_s* cache = tls_cache_remote_data();
-  if (!cache) return 0;
-  return cache->this_cache_num_prefetches_unused;
-}
 int64_t get_per_cache_num_prefetches_waited(void)
 {
   struct rdcache_s* cache = tls_cache_remote_data();
@@ -4349,12 +4337,6 @@ int64_t get_per_cache_num_prefetches_useless(void)
   struct rdcache_s* cache = tls_cache_remote_data();
   if (!cache) return 0;
   return cache->this_cache_num_prefetches_useless;
-}
-int64_t get_per_cache_num_prefetches_completed(void)
-{
-  struct rdcache_s* cache = tls_cache_remote_data();
-  if (!cache) return 0;
-  return cache->this_cache_num_prefetches_completed;
 }
 int64_t get_per_cache_num_get_hits(void)
 {

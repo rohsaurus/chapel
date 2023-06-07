@@ -46,37 +46,73 @@ module AdaptiveRemoteCachePrefetching {
     // are usually dealing with primitives (ints, reals, bool).
     config const DEFAULT_PREFETCH_SIZE = 4;
 
-    // Some defaults associated with our approach to adjusting the prefetch distance.
+    // Some defaults associated with our approach to adjusting the prefetch distance. In
+    // all cases where we refer to the prefetch distance, we are talking about some task's
+    // distance. The same logic/operations are performed for every task's distance independently
+    // from the others.
     //
-    //  MAX_PREFETCH_DISTANCE: the maximum value we will increase the distance to
+    // MAX_PREFETCH_DISTANCE: the maximum value we will increase the distance to
     //
-    //  MIN_PREFETCH_DISTANCE: the minimum value we will decrease the distance to
+    // MIN_PREFETCH_DISTANCE: the minimum value we will decrease the distance to
     //
-    //  MAX_WINDOW: how many "windows" must elapse before we decrease the distance
+    // LATE_WINDOW: how many "windows" must elapse before we decrease the distance if
+    //              we've been below the late prefetch tolerance each time. The logic here is
+    //              that if we are not waiting for prefetches, we run the risk of prefetching too
+    //              early and that could lead to unused prefetches (data evicted before it could be
+    //              used). So if we've consistently NOT late, then decrease the distance by 1. This
+    //              has the effect of trying to make our prefetches come in right on time. The
+    //              "windows" here refer to each time we make a call to adjustment distance, which is
+    //              determined by PREFETCH_SAMPLE (see below). So if PREFETCH_SAMPLE is 10 and LATE_WINDOW
+    //              is 8, then we will decreasr the distance if we've been NOT late for 10*8 = 80 loop
+    //              iterations.
     //
-    //  PREFETCH_SAMPLE_RATIO: percentage of the loop iterations that must elapse
-    //                         before we will attempt to adjust the distance.
+    // PREFETCH_SAMPLE: number of loop iterations that must elapse before we
+    //                  will attempt to adjust the distance. By "loop" we mean the
+    //                  the loop that contains the prefetch call
     //
-    //  LATE_PREFETCH_TOLERANCE: percentage of prefetches that are allowed to be
-    //                           late. Default is 10%
+    // LATE_PREFETCH_TOLERANCE: percentage of prefetches that are allowed to be
+    //                          late. A prefetch is late if the task had to wait
+    //                          for the prefetch to arrive. The late prefetch percentage
+    //                          is computed per adjustment interval (so it resets after each
+    //                          attempt to adjust the distance).
     //
-    // UNUSED_PREFETCH_TOLERANCE: same as above but for unused prefetches.
+    // USELESS_PREFETCH_TOLERANCE: percentage of prefetches that are allowed to be useless. A
+    //                             prefetch is useless if the data we tried to prefetch was already
+    //                             in the cache (so we didn't need to issue the prefetch to begin with).
+    //                             The data may be there from an earlier prefetch or just the normal
+    //                             read-ahead feature of the remote cache. So a value of 80% here says
+    //                             that if 80% or more of the prefetches are useless, then we should do
+    //                             something (see PREFETCH_TIMEOUT). Like with late prefetch percentages,
+    //                             we calculate the useless prefetch percentages per adjustment window.
     //
-    //  TARGET_PREFETCHES: specifies which type of prefetches our adaptive
-    //                     algorithm will focus on: late/waited-on (0), early/unused (1)
-    //                     both but favors late (2), both but favors early(3) and constant (4). 
-    //                     This is a compile-time cosntant/param since
-    //                     it is used to match on the adjustment procedure.
+    // PREFETCH_TIMEOUT: the number of adjustment intervals (windows) that elapse before we will quit
+    //                   prefetching if we've been above the useless prefetch tolerance. The logic here is
+    //                   that if we're consistently issuing useless prefetches, we're better off not prefetching
+    //                   because we're clearly in some sort of dense/regular memory access pattern region. Prefetching
+    //                   can resume once we observe a X% miss rate, where X is specified by MISS_TOLERANCE.
+    //
+    // MISS_TOLERANCE: the percentage of GETs to the cache that are allowed to be misses before we decide to restart
+    //                 prefetching. We use this threshold once we've stopped prefetching due to too many useless
+    //                 prefetches. We still stop at each adjustment interval/window, but we'll now check the miss rate
+    //                 of that window and see if it is above MISS_TOLERANCE. If it is, we'll resume prefetching again using
+    //                 the last value of the distance before we stopped. The logic here is that we stopped prefetching because 
+    //                 we were hitting in the cache for data we wanted to prefetch. But if we see that we start missing a lot then
+    //                 we'll want to begin prefetching again.
+    //
+    // CONSTANT_PREFETCHES: If this is set true, then we will not adjust the
+    //                      prefetch distance. Default is false so
+    //                      we use our heuristic. This is a compile-time variable,
+    //                      so it must be set when compiling.
     //
     config const MAX_PREFETCH_DISTANCE = 256;
     config const MIN_PREFETCH_DISTANCE = 1;
-    config const MAX_WINDOW = 8;
-    config const PREFETCH_SAMPLE_RATIO = 0.01;
+    config const LATE_WINDOW = 8;
+    config const PREFETCH_SAMPLE = 100;
     config const LATE_PREFETCH_TOLERANCE = 10;
-    config const UNUSED_PREFETCH_TOLERANCE = 10;
-    config const USELESS_PREFETCH_TOLERANCE = 10;
+    config const USELESS_PREFETCH_TOLERANCE = 80;
     config const PREFETCH_TIMEOUT = 32;
-    config param TARGET_PREFETCHES = 0;
+    config const MISS_TOLERANCE = 50;
+    config param CONSTANT_PREFETCHES = false;
 
     //###########################################################################
     //
@@ -106,7 +142,6 @@ module AdaptiveRemoteCachePrefetching {
     extern proc reset_per_cache_prefetch_counters();
     extern proc reset_per_cache_get_counters();
     extern proc get_per_cache_num_prefetches() : int;
-    extern proc get_per_cache_num_prefetches_unused() : int;
     extern proc get_per_cache_num_prefetches_waited() : int;
     extern proc get_per_cache_num_prefetches_useless() : int;
     extern proc get_per_cache_num_prefetches_completed() : int;
@@ -163,10 +198,6 @@ module AdaptiveRemoteCachePrefetching {
     {
         return get_per_cache_num_prefetches();
     }
-    inline proc get_cache_num_prefetches_unused()
-    {
-        return get_per_cache_num_prefetches_unused();
-    }
     inline proc get_cache_num_prefetches_waited()
     {
         return get_per_cache_num_prefetches_waited();
@@ -183,32 +214,28 @@ module AdaptiveRemoteCachePrefetching {
     inline proc get_all_cache_prefetch_counters()
     {
         var num_prefetches = 0;
-        var num_prefetches_unused = 0;
         var num_prefetches_waited = 0;
         var num_prefetches_useless = 0;
         var num_prefetches_completed = 0;
         coforall loc in Locales with (+reduce num_prefetches,
-                                      +reduce num_prefetches_unused,
                                       +reduce num_prefetches_waited,
                                       +reduce num_prefetches_useless,
                                       +reduce num_prefetches_completed)
         {
             on loc {
                 coforall tid in 1..loc.maxTaskPar with (+reduce num_prefetches,
-                                                        +reduce num_prefetches_unused,
                                                         +reduce num_prefetches_waited,
                                                         +reduce num_prefetches_useless,
                                                         +reduce num_prefetches_completed)
                 {
                     num_prefetches += get_cache_num_prefetches();
-                    num_prefetches_unused += get_cache_num_prefetches_unused();
                     num_prefetches_waited += get_cache_num_prefetches_waited();
                     num_prefetches_useless += get_cache_num_prefetches_useless();
                     num_prefetches_completed += get_cache_num_prefetches_completed();
                 }
             }
         }
-        return (num_prefetches, num_prefetches_unused, num_prefetches_waited, num_prefetches_useless, num_prefetches_completed);
+        return (num_prefetches, num_prefetches_waited, num_prefetches_useless, num_prefetches_completed);
     }
 
     //###########################################################################
@@ -340,6 +367,13 @@ module AdaptiveRemoteCachePrefetching {
     // in the loop.
     //
 
+    // ##################### Getting prefetch sample size #######################
+    // This is simply a wrapper to get the value of PREFETCH_SAMPLE
+    inline proc getPrefetchSampleSize()
+    {
+        return PREFETCH_SAMPLE;
+    }
+
     // ##################### Extracting the stride of the loop #######################
     //
     // This is called when the loop did not have an explicit stride but was iterating
@@ -444,58 +478,142 @@ module AdaptiveRemoteCachePrefetching {
     //
     //###########################################################################
     //
-    // This procedure determines the sample size for when we do prefetch distance
-    // adjustment. We want to adjust the distance every so many iterations of the
-    // loop that contains the prefetched access. In general, we want the sample
-    // size to be PREFETCH_SAMPLE_RATIO of the number of iterations assigned to 
-    // a task. When we have a forall with an inner for-loop which contains the access, 
-    // we compute this relative to the for-loop's iterations. Since only one task 
-    // executes this for-loop, we don't have to do anything too complicated. However, 
-    // if we have a forall only, then we want to determine how many iterations are given 
-    // to each task, and use that for the calculation. We also need to consider things like
-    // the loop stride when determining how many iterations it has.
+    // Here is the heuristic that is called to attempt to adjust the prefetch
+    // distance for some task.
     //
-    // "end" here refers to lastValidIndex from getLastLoopIndex().
-    // The assumption is that the loop is [start,...,end], so the bounds
-    // are inclusive. So the number of iterations is equal to (end-start)+1.
-    // When factoring in the stride, we divide that by the stride.
-    inline proc getPrefetchSampleSizeForLoop(const start : int, const end : int, const stride : int)
+    //      dist: the prefetch distance to adjust. This is passed in as a ref since we can modify it
+    //  
+    //      windowLate: keeps track of how many windows have elapsed where we were below the late tolerance. Also
+    //                  passed in as a ref since we modify it.
+    //
+    //      windowUseless: keeps track of how many windows have elapsed where we were above the useless tolerance.
+    //                     Passed in as a ref since we modify it.
+    //
+    //      stoppedPrefetching: is this is true, it means we have not been prefetching, so we do something
+    //                          different in the heuristic. This is passed in as a ref because this procedure
+    //                          is what actually sets this parameter to true or false.
+    //
+    // When this is called, there are two scenarios to consider:
+    //      1.) We had stopped prefetching
+    //      2.) We have been prefetching up to this point
+    //
+    // For (1), we haven't been prefetching because we stopped due to too many useless prefetches. 
+    // So what we do now is look at our miss rate and see if we need to restart prefetching.
+    // For (2), we will look at how many prefetches were late and use that to determine whether we
+    // modify the prefetch distance (and factor in windowLate, see code-comments below). We also look
+    // at useless prefetches and see whether we need to stop prefetching.
+    //
+    // We know that we had stopped prefetching because the argument stoppedPrefetching is set to true.
+    // If we are in case (2) but find that we meet the criteria to stop prefetching, then we will set
+    // stoppedPrefetching to true. If we are in case (1) and find that we meet the critera to restart
+    // prefetching, we will set stoppedPrefetching to false.
+    inline proc adjustPrefetchDistance(ref dist : int, 
+                                       ref windowLate : int, 
+                                       ref windowUseless : int,
+                                       ref stoppedPrefetching : bool) where CONSTANT_PREFETCHES == false
     {
-        const numIters = ((end - start)+1) / stride;
-        const sampleSize = (numIters * PREFETCH_SAMPLE_RATIO):int;
-        // If we don't have enough iterations to get a sample size that is at least 1,
-        // just return numIters; this ensures we'll never do prefetch adjustments.
-        // NEW: instead of not doing adjustments in this case, let's return something that
-        // ensures we do the adjustments. Let's try just rounding up to 1.
-        if sampleSize == 0 {
-            return 1;
+        //###################################################################################
+        // 1.) If we have not been prefetching, calculate the miss rate by looking at
+        // the number of misses and hits. Then, if the miss rate is above MISS_TOLERANCE,
+        // set stoppedPrefetching to false to indicate that we will start prefetching
+        // again. We reset the windows, and keep dist as it is (so we will start with
+        // the distance we used last).
+        if (stoppedPrefetching == true) {
+            const numMisses = per_cache_num_get_misses();
+            const numHits = per_cache_num_get_hits();
+            const missRate = ((numMisses:real)/(numMisses+numHits))*100:int;
+            const tmp = ((numMisses:real)/(numMisses+numHits))*100;
+            if (missRate > MISS_TOLERANCE) {
+                stoppedPrefetching = false;
+                windowLate = 0;
+                windowUseless = 0;
+            }
+            // Reset counters for next window
+            reset_per_cache_prefetch_counters();
+            reset_per_cache_get_counters();
+            return;
+        }
+
+        //###################################################################################
+        // 2.) If we have been prefetching up to this point, calculate the late prefetch
+        // and useless prefetch percentages. We differeniate between the total number of
+        // prefetches (numPrefetches) and the number of completed prefetches (numPrefetchesComp).
+        // A completed prefetch is one where we actually issued the prefetch (i.e., it wasn't
+        // a useless prefetch). We can calculate that by just substracting off the number of
+        // useless prefetches from the total number of prefetches
+        const numPrefetches = get_per_cache_num_prefetches();
+        const numUselessPrefetches = get_per_cache_num_prefetches_useless();
+        const numPrefetchesComp = numPrefetches - numUselessPrefetches;
+        const numLatePrefetches = get_per_cache_num_prefetches_waited();
+        const latePrefetchPercent = ((numLatePrefetches:real / numPrefetchesComp)*100):int;
+        const uselessPrefetchPercent = ((numUselessPrefetches:real / numPrefetches)*100):int; 
+            
+        // If the amount of useless prefetches is too high, and has been too high for PREFETCH_TIMEOUT
+        // consecutive windows, then set stoppedPrefetching to true and return. This means we are
+        // likely not getting a benefit from prefetching so we should stop for now.
+        if (uselessPrefetchPercent > USELESS_PREFETCH_TOLERANCE) {
+            if (windowUseless < PREFETCH_TIMEOUT) {
+                // Haven't reach the timeout yet, so increment the window
+                windowUseless += 1;
+            }
+            else {
+                // We've been above the threshold too many times in a row, so
+                // quite prefetching for now.
+                stoppedPrefetching = true;
+                windowUseless = 0;
+                windowLate = 0;
+                // Reset counters for next window
+                reset_per_cache_prefetch_counters();
+                reset_per_cache_get_counters();
+                return;
+            }
         }
         else {
-            return sampleSize;
+            // We're below the threshold, so reset the window count
+            windowUseless = 0;
         }
-    }
-    // version when we have a forall
-    inline proc getPrefetchSampleSizeForall(const start : int, const end : int, const stride : int)
-    {
-        const totalNumIters = ((end - start)+1) / stride;
-        // totalNumIters is total number of iterations of the forall. We care about the number of
-        // iterations that will be given to a task. So we need to factor in how many locales
-        // we are running on, and how many tasks per locale. We assume that maxTaskPar is the 
-        // same across all locales. It may be the case that numTasks is greater than totalNumIters,
-        // which can happen when we have a very small loop (or running on LOTS of locales with many
-        // cores). In such a case, we can assume that prefetching is not of interest, so just return
-        // totalNumIters, which means we'll never do the adjustment since the count we keep incrementing
-        // will never reach totalNumIters within the check we do.
-        const numTasks = if dataParTasksPerLocale == 0 then numLocales * here.maxTaskPar
-                                                       else numLocales * dataParTasksPerLocale;
-        const numItersPerTask = totalNumIters / numTasks;
-        if numItersPerTask == 0 {
-            return totalNumIters;
+
+        // If we're here, we are either below the useless prefetch tolerance, or
+        // we are above it but haven't been above it for too long. In either case,
+        // we need to consider the late prefetches now, which can actually affect the
+        // value of the prefetch distance. If the late prefetch percentage is above
+        // the tolerance, we increase the distance (effectively giving future prefetches
+        // more time to complete so we don't have to wait for them). If we are below the
+        // tolerance, and we have been below for LATE_WINDOW intervals, then increase the
+        // distance so we are not too early.
+        if (latePrefetchPercent > LATE_PREFETCH_TOLERANCE) {
+            dist = min(dist+1, MAX_PREFETCH_DISTANCE);
+            windowLate = 0;
         }
         else {
-            return (numItersPerTask * PREFETCH_SAMPLE_RATIO):int;
+            if (windowLate < LATE_WINDOW) {
+                windowLate += 1;
+            }
+            else {
+                dist = max(dist-1, MIN_PREFETCH_DISTANCE);
+            }
         }
+
+        // Last thing we do is reset the cache counters for the next window/interval.
+        reset_per_cache_prefetch_counters();
+        reset_per_cache_get_counters();
+    } 
+
+
+    // This is a version that keeps the distance constant (i.e., does nothing
+    inline proc adjustPrefetchDistance(ref dist : int, ref window : int) where CONSTANT_PREFETCHES == true
+    {
+        return;
     }
+
+
+    //###########################################################################
+    //
+    //                           Utilities
+    //
+    //###########################################################################
+    //
+    // These are functions that are not worth categorizing in any particular way
 
     // Utility code to monitor the prefetch distance. When we want to do this, we'll uncomment out
     // some compiler code that sets thing up when the optimization is applied. Specifically, each
@@ -550,162 +668,6 @@ module AdaptiveRemoteCachePrefetching {
             writef("\n");
         }
     }
-
-
-    // This procedure performs the adjustment of a given prefetch distance. It is
-    // the version that favors increasing the distance to reduce waited-on prefetches.
-    // The compiler will insert a call to this function within the loop that contains 
-    // the prefetch. Specifically, the compiler will generate an if-check that has a 
-    // call to this procedure in the then-block. The if-check looks at a task-private 
-    // variable "count" and sees whether it greater than the number of sample iterations. 
-    // If it is, we call this procedure. Else, we increment it. So something like:
-    //
-    //      if (count < numSampleIterations) {
-    //          count += 1;
-    //      }
-    //      else {
-    //          adjustPrefetchDistance(dist, window);
-    //          count = 0;
-    //      }
-    //  
-    // The "numSampleIterations" value is determined by the number of iterations of
-    // the loop that contains the prefetched access (see getPrefetchSampleSize()).
-    //
-    // This approach is adapted/taken from the following paper:
-    //  " Near-Side Prefetch Throttling: Adpative Prefetching for High-Performance Many-Core Processors"
-    //
-    inline proc adjustPrefetchDistance(ref dist : int, ref window : int, ref cnt : int) where TARGET_PREFETCHES == 0
-    {
-        // 1.) Get the current counters
-        const numPrefetches = get_per_cache_num_prefetches();
-        const numPrefetchesComp = get_per_cache_num_prefetches_completed();
-        const numLatePrefetches = get_per_cache_num_prefetches_waited();
-        const numUselessPrefetches = get_per_cache_num_prefetches_useless();
-        
-        // 2.) Compute the percentage of late prefetches and useless prefetches
-        const latePrefetchPercent = ((numLatePrefetches:real / numPrefetchesComp)*100):int;
-        const uselessPrefetchPercent = ((numUselessPrefetches:real / numPrefetches)*100):int;
-
-        // NEW: if the amount of useless prefetches is too high, then set the distance to
-        // -1 and return. This forces the prefetches for this task to stop. We won't do
-        // any more prefetches until we encounter the forall loop again.
-        // NEWER: if we're above the threshold for PREFETCH_TIMEOUT adjustment intervals in a row, then we set the
-        // distance to -1.
-        if (uselessPrefetchPercent > USELESS_PREFETCH_TOLERANCE) {
-            if (cnt < PREFETCH_TIMEOUT) {
-                // increase count, and then still atempt to adjust.
-                cnt += 1;
-            }
-            else {
-                // we've been above the threshold too many times in a row
-                dist = -1;
-                return;
-            }
-        }
-        else {
-            // below the threshold, reset cnt.
-            cnt = 0; // reset cnt
-        }
-
-        // 3.) We want latePrefetchPercent to be 10% or less (default). If it is larger,
-        //     then we increase the distance by 1. If it is less, and the value
-        //     of "window" is less than MAX_WINDOW, then keep the distance constant
-        //     until "window" hits MAX_WINDOW. If "window" is greater than or equal
-        //     to MAX_WINDOW, then we decrement the distance. This continues until
-        //     we hit MIN_PREFETCH_DISTANCE or the percentage of late prefetches
-        //     exceeds 10%.
-        //
-        if (latePrefetchPercent > LATE_PREFETCH_TOLERANCE) {
-            dist = min(dist+1, MAX_PREFETCH_DISTANCE);
-            window = 0;
-        }
-        else {
-            if (window < MAX_WINDOW) {
-                window += 1;
-            }
-            else {
-                dist = max(dist-1, MIN_PREFETCH_DISTANCE);
-            }
-        }
-
-        // 4.) Reset the counters
-        reset_per_cache_prefetch_counters();
-    }
-   
-    // Copy of the above but looks at unused prefetches. If we have more than X% unused prefetches,
-    // we decrease the distance.
-    inline proc adjustPrefetchDistance(ref dist : int, ref window : int) where TARGET_PREFETCHES == 1
-    {
-        const numPrefetches = get_per_cache_num_prefetches();
-        const numUnusedPrefetches = get_per_cache_num_prefetches_unused();
-        const unusedPrefetchPercent = ((numUnusedPrefetches:real / numPrefetches)*100):int;
-        if (unusedPrefetchPercent > UNUSED_PREFETCH_TOLERANCE) {
-            dist = max(dist-1, MIN_PREFETCH_DISTANCE);
-            window = 0;
-        }
-        else {
-            if (window < MAX_WINDOW) {
-                window += 1;
-            }
-            else {
-                dist = min(dist+1, MAX_PREFETCH_DISTANCE);
-            }
-        }
-        reset_per_cache_prefetch_counters();   
-    }
-
-    // Same as above but considers both late and unused, but favors unused (checks for it first).
-    inline proc adjustPrefetchDistance(ref dist : int, ref window : int) where TARGET_PREFETCHES == 2
-    {
-        const numPrefetches = get_per_cache_num_prefetches();
-        const numUnusedPrefetches = get_per_cache_num_prefetches_unused();
-        const numLatePrefetches = get_per_cache_num_prefetches_waited();
-        const latePrefetchPercent = ((numLatePrefetches:real / numPrefetches)*100):int;   
-        const unusedPrefetchPercent = ((numUnusedPrefetches:real / numPrefetches)*100):int;
-        if (unusedPrefetchPercent > UNUSED_PREFETCH_TOLERANCE) {
-            // decrease distance by 1
-            dist = max(dist-1, MIN_PREFETCH_DISTANCE);
-        }
-        else if (latePrefetchPercent > LATE_PREFETCH_TOLERANCE) {
-            // increase distance by 1
-            dist = min(dist+1, MAX_PREFETCH_DISTANCE);
-        }
-        reset_per_cache_prefetch_counters();
-        return;
-    }
-
-    // Same as above but factors late prefetches
-    inline proc adjustPrefetchDistance(ref dist : int, ref window : int) where TARGET_PREFETCHES == 3
-    {
-        const numPrefetches = get_per_cache_num_prefetches();
-        const numUnusedPrefetches = get_per_cache_num_prefetches_unused();
-        const numLatePrefetches = get_per_cache_num_prefetches_waited();
-        const latePrefetchPercent = ((numLatePrefetches:real / numPrefetches)*100):int;
-        const unusedPrefetchPercent = ((numUnusedPrefetches:real / numPrefetches)*100):int;
-        if (latePrefetchPercent > LATE_PREFETCH_TOLERANCE) {
-            dist = min(dist+1, MAX_PREFETCH_DISTANCE);
-        }
-        else if (unusedPrefetchPercent > UNUSED_PREFETCH_TOLERANCE) {
-            // decrease distance by 1
-            dist = max(dist-1, MIN_PREFETCH_DISTANCE);
-        }
-        reset_per_cache_prefetch_counters();
-        return;
-    }
-
-    // This is a version we use for testing that keeps the distance constant
-    inline proc adjustPrefetchDistance(ref dist : int, ref window : int) where TARGET_PREFETCHES == 4
-    {
-        return;
-    }
-
-    //###########################################################################
-    //
-    //                           Utilities
-    //
-    //###########################################################################
-    //
-    // These are functions that are not worth categorizing in any particular way.
     
     // Initialized the task-private prefetch distance to the initial value
     inline proc initPrefetchDistance()
@@ -718,6 +680,12 @@ module AdaptiveRemoteCachePrefetching {
     inline proc initCounts()
     {
         return 0;
+    }
+    
+    // Used to initialize the task-private stoppedPrefetching variable
+    inline proc initBool()
+    {
+        return false;
     }
 
     // Various param-based procs to determine if a given domain is distributed.

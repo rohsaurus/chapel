@@ -2596,18 +2596,18 @@ static bool isLocalAccess(CallExpr *call) {
         reset_prefetch_counters();
         const lastValidIndex = getLastLoopIndex(..);
         const loopStride = getLoopStride(..);
-        const numSampleIterations = getPrefetchSampleSize(..);
-        forall i in ... with (var prefetchDistance, var count, var window) {
+        ... other "get" functions for some variables
+        forall i in ... with (var dist, var count, var windowLate, var windowUseless, var stop) {
             param staticPrefetchCheck = chpl__isPrefetchSupported(..);
             if staticPrefetchCheck == true {
-                if count < numSampleIterations {
+                if count < PREFETCH_SAMPLE {
                     count += 1
                 }
                 else {
-                    adjustPrefetchDistance(prefetchDistance, window);
+                    adjustPrefetchDistance(dist, windowLate, windowUseless, stop);
                     count = 0;
                 }
-                if (i+(prefetchDistance * loopStride)) <= lastValidIndex {
+                if !stop && (i+(dist * loopStride)) <= lastValidIndex {
                     if isArray(loopIteratorSym) {
                         prefetch for array
                     }
@@ -3399,33 +3399,28 @@ static void loopIteratesOverRangeOrUsesByClause(CallExpr *parentCall,
         a tuple, which is what the custom iterator from (1) yields. See
         updateLoopIndexVariableARP() for details.
 
-    3.) Add the const declaration for the several relevant variables: number of sample 
-        iterations we run before attempting to adjust the distance, the stride of the
-        loop and the last valid index of the loop.
+    3.) Add the const declaration for the several relevant variables
 
-    4.) Add per-task variables to the forall: prefetch distance, count that tells us
-        when to adjust the distance and a window count used in the distance adjustment.
-        We add these variables for each prefetch candidate. 
+    4.) Add per-task variables to the forall
     
     5.) Add an if-then structure that performs a param/static check to see whether we
         can do prefetching. All code generated after this step is placed within the
         then-block of this if statement.
 
-    6.) Add an if-then-structure that checks if the count from (4) is greater than numSampleIterations
-        from (3). If it isn't, increment the count by 1. If it is, add a call to the prefetch
+    6.) Add an if-then-structure that checks if the per-task count variable added in (4) is
+        equal to PREFETCH_SAMPLE (defined in modules/internal/AdaptiveRemotePrefetching.chpl)
+        If it isn't, increment the count by 1. If it is, add a call to the prefetch
         adjustment procedure and reset the count to 0.
 
     7.) Add an if-then structure, where we check whether our prefetch will be out-of-bounds
         w.r.t. the loop domain. If the prefetch will be in-bounds, we create a primitive
         in the then-block that will be replaced with the prefetch call during prefolding.
         If the prefetch will be out-of-bounds, we don't do anything special; it just falls
-        through and does the access (i.e., there is no else-block).
+        through and does the original access (i.e., there is no else-block). We also have a
+        check in this conditional for whether we have stopped prefetching (this is controlled
+        by another task-private variable created in (4)).
 
-    8.) Create an outer if-then structure that only takes the then-branch of prefetching
-        is supported/valid. This is a param-guarded check so if the check is resolved to
-        false, it will eliminate the code added from (4) above.
-
-    9.) Replace the original A[B[i]] access with a primitive that will be caught and
+    8.) Replace the original A[B[i]] access with a primitive that will be caught and
         processed during prefolding.
 
     Arguments:
@@ -3485,16 +3480,6 @@ static void optimizeLoopARP(ForallStmt *forall)
     //     to prefolding.
     createStaticCheckARP(forall,
                          candidate);
-
-    // TODO NEW: create an if-then statement that checks whether the prefetch
-    // distance is NOT -1. If it is not -1, then we'll do all the prefetching
-    // stuff. Otherwise, we'll just do the original access. We are setting the distance
-    // to -1 when we encounter too many useless prefetches.
-    Expr *distCheck = new CallExpr(">", candidate.prefetchDistance, new_IntSymbol(0));
-    BlockStmt *thenBlock = new BlockStmt();
-    CondStmt *cond = new CondStmt(distCheck, thenBlock);
-    candidate.staticCond->thenStmt->insertAtHead(cond);
-    candidate.distCond = cond;
 
     // 6.) Add if-then-else structure for adjusting the prefetch
     //     distance once we've executed the required number of iterations.
@@ -3894,11 +3879,11 @@ static void updateLoopIndexVariableARP(ForallStmt *forall,
     Given a forall and a candidate access, create the few const variables that we'll
     need during the adaptive remote prefetching (ARP) optimization.
 
-    Specifically, we create numSampleIterations, loopStride and lastValidIndex.
-    If we've already processed a candidate in this forall (or for-loop), then we
-    don't need to recreate the variables. We'll simply "get" them from the AST
-    and add them to the candidate's info. This is because these variables are not
-    specific to an individual candidate but rather the entire forall/loop.
+    Specifically, we create loopStride and lastValidIndex. If we've already processed a 
+    candidate in this forall (or for-loop), then we don't need to recreate the variables. 
+    We'll simply "get" them from the AST and add them to the candidate's info. This is 
+    because these variables are not specific to an individual candidate but rather the 
+    entire forall/loop.
 
     We use loopStride in both the out-of-bounds check we do as well as the prefetch
     call. It tells us how the loop index variable progresses between iterations.
@@ -3915,9 +3900,8 @@ static void updateLoopIndexVariableARP(ForallStmt *forall,
     .domain.high. For ranges, it depends on whether the range uses "#", "<" or no
     operator. We handle such cases separately.
 
-    The numSampleIterations variable tells us how many iterations of the loop containing
-    the candidate we need to execute before we attempt to adjust the prefetch distance.
-    It relies on knowledge of the start/end bounds of the loop as well as the loop stride.
+    We also create a variable called numSamples that simply just holds the value of
+    PREFETCH_SAMPLE defined in modules/internal/AdaptiveRemotePrefetching.chpl
 
     Lastly, we insert a call to reset the prefetch counters. If we just have a forall
     loop, this is inserted right before the loop. If we have an inner for-loop, we
@@ -3966,9 +3950,8 @@ static void createConstVariablesARP(ForallStmt *forall,
             candidate.loopStride = toVarSymbol(def->sym);
             found++;
           }
-          else if (call->isNamed("getPrefetchSampleSizeForLoop") ||
-                   call->isNamed("getPrefetchSampleSizeForall")) {
-            candidate.numSampleIterations = toVarSymbol(def->sym);
+          else if (call->isNamed("getPrefetchSampleSize")) {
+            candidate.numSamples = toVarSymbol(def->sym);
             found++;
           }
         }
@@ -3992,15 +3975,15 @@ static void createConstVariablesARP(ForallStmt *forall,
   const char *ID = ID_str.c_str();
   VarSymbol *loopStride = new VarSymbol(astr("loopStride_", ID));
   VarSymbol *lastValidIndex = new VarSymbol(astr("lastValidIndex_", ID));
-  VarSymbol *numSampleIterations = new VarSymbol(astr("numSampleIterations_", ID));
+  VarSymbol *numSamples = new VarSymbol(astr("numSamples_", ID));
 
   candidate.loopStride = loopStride;
   candidate.lastValidIndex = lastValidIndex;
-  candidate.numSampleIterations = numSampleIterations;
+  candidate.numSamples = numSamples;
 
   loopStride->addFlag(FLAG_CONST);
   lastValidIndex->addFlag(FLAG_CONST);
-  numSampleIterations->addFlag(FLAG_CONST);
+  numSamples->addFlag(FLAG_CONST);
 
   // Do the loopStride/lastValidIndex first
   CallExpr *getLoopStride = NULL;
@@ -4053,27 +4036,10 @@ static void createConstVariablesARP(ForallStmt *forall,
     }
   } /* end of else branch for loop iterator type */
 
-  // Now handle numSampleIterations. The call relies on knowing the start of the loop,
-  // the last valid index and the stride. If we have a range, we have an Expr for the
-  // start of the loop. Else, we have an array/domain, so the start is equal to domain.low,
-  // which is extracted via getFirstLoopIndex
-  CallExpr *getPrefetchSampleSize = NULL;
-  if (candidate.forloop == NULL) {
-    getPrefetchSampleSize = new CallExpr("getPrefetchSampleSizeForall");
-  }
-  else {
-    getPrefetchSampleSize = new CallExpr("getPrefetchSampleSizeForLoop");
-  }
-  if (candidate.loopIteratorType != RANGE) {
-    CallExpr *getFirstLoopIndex = new CallExpr("getFirstLoopIndex",
-                                               candidate.loopIteratorSym);
-    getPrefetchSampleSize->insertAtTail(getFirstLoopIndex);
-  }
-  else {
-    getPrefetchSampleSize->insertAtTail(candidate.rangeStart->copy());
-  }
-  getPrefetchSampleSize->insertAtTail(candidate.lastValidIndex);
-  getPrefetchSampleSize->insertAtTail(candidate.loopStride);
+  // Handle the numSamples call, just a simple procedure call
+  CallExpr *getPrefetchSampleSize = new CallExpr("getPrefetchSampleSize");
+  
+
   // Now insert the calls before the loop that contains the access
   INT_ASSERT(getLoopStride != NULL);
   INT_ASSERT(getLastValidIndex != NULL);
@@ -4083,22 +4049,24 @@ static void createConstVariablesARP(ForallStmt *forall,
   // for this task right before the for-loop.
   if (candidate.forloop != NULL) {
     candidate.forloop->insertBefore(new CallExpr("reset_per_cache_prefetch_counters"));
+    candidate.forloop->insertBefore(new CallExpr("reset_per_cache_get_counters"));
     candidate.forloop->insertBefore(new DefExpr(loopStride,
                                                 getLoopStride));
     candidate.forloop->insertBefore(new DefExpr(lastValidIndex,
                                                 getLastValidIndex));
-    candidate.forloop->insertBefore(new DefExpr(numSampleIterations,
+    candidate.forloop->insertBefore(new DefExpr(numSamples,
                                                 getPrefetchSampleSize));
   }
   else {
     // if we just have a forall, we reset the counters for all tasks before
     // the forall loop
     forall->insertBefore(new CallExpr("reset_prefetch_counters"));
+    forall->insertBefore(new CallExpr("reset_get_counters"));
     forall->insertBefore(new DefExpr(loopStride,
                                      getLoopStride));
     forall->insertBefore(new DefExpr(lastValidIndex,
                                      getLastValidIndex));
-    forall->insertBefore(new DefExpr(numSampleIterations,
+    forall->insertBefore(new DefExpr(numSamples,
                                      getPrefetchSampleSize));
   }
 
@@ -4109,24 +4077,19 @@ static void createConstVariablesARP(ForallStmt *forall,
 /*
     Given a candidate and the forall it is in, add a per-task prefetch distance
     variable to the forall. The distance is initialized to a default value (determined
-    by whatever initPrefetchDistance() returns). Also add per-task count and window
-    variables. Count is initialized to 0 and is incremented in each iteration of the
-    loop that contains the candidate access; when it hits numSampleIterations, then
-    we attempt to adjust the prefetch distance. The window variable is another prefetch 
-    adjustment parameter that is used within adjustPrefetchDistance. It is initialized 
-    to 0 as well. Finally, we add a stopCount variable initialized to 0. This is used
-    to keep track of how many consecutive adjust intervals we've seen where we had
-    too many useless prefetches.
+    by whatever initPrefetchDistance() returns). 
 
-    TODO: It may not be necessary to give each candidate its own count variable. If
-    there are two candidates nested in the same forall (or for-loop), they can share
-    the same count variable since they each share the same loop bounds, and hence will
-    adjust their distances at the same interval. To do this, we'd need to keep track
-    of whether a given forall or for-loop has been processed (and a count created). If
-    we have already done so, instead of creating another count, we'll want to indicate
-    in some way that we didn't, and ensure that when we call createPrefetchAdjustmentCheck(),
-    we only generate a single if-check for those candidates and insert the appropriate
-    calls to adjust the distances.
+    Also add per-task count and window variables. Count is initialized to 0 and is 
+    incremented in each iteration of the loop that contains the candidate access; 
+    when it hits PREFETCH_SAMPLE, then we attempt to adjust the prefetch distance. 
+
+    The window variables are windowLate and windowUseless, and are another prefetch 
+    adjustment parameter that is used within adjustPrefetchDistance. They are initialized 
+    to 0 as well. 
+
+    Finally, we add stoppedPrefetching as a bool. This is set to true if we should not
+    be prefetching and false otherwise. It is initialized to false (this is the default
+    behavior in Chapel, but we'll do an explicit initialization for clarity).
 
     Arguments:
     forall -> the forall with the candidate
@@ -4142,8 +4105,9 @@ static void addTaskPrivateVariablesToForallARP(ForallStmt *forall,
   const char *ID = ID_str.c_str();
   UnresolvedSymExpr *distanceTmp = new UnresolvedSymExpr(astr("prefetchDist_", ID));
   UnresolvedSymExpr *countTmp = new UnresolvedSymExpr(astr("count_", ID));
-  UnresolvedSymExpr *windowTmp = new UnresolvedSymExpr(astr("window_", ID));
-  UnresolvedSymExpr *stopTmp = new UnresolvedSymExpr(astr("stopCount_", ID));
+  UnresolvedSymExpr *windowLateTmp = new UnresolvedSymExpr(astr("windowLate_", ID));
+  UnresolvedSymExpr *windowUselessTmp = new UnresolvedSymExpr(astr("windowUseless_", ID));
+  UnresolvedSymExpr *stopTmp = new UnresolvedSymExpr(astr("stopPrefetching_", ID));
 
   ShadowVarSymbol *prefetchDistance = ShadowVarSymbol::buildForPrefix(SVP_VAR,
                                                                       distanceTmp,
@@ -4153,14 +4117,18 @@ static void addTaskPrivateVariablesToForallARP(ForallStmt *forall,
                                                            countTmp,
                                                            NULL,
                                                            new CallExpr("initCounts"));
-  ShadowVarSymbol *window = ShadowVarSymbol::buildForPrefix(SVP_VAR,
-                                                            windowTmp,
-                                                            NULL,
-                                                            new CallExpr("initCounts"));
-  ShadowVarSymbol *stopCount = ShadowVarSymbol::buildForPrefix(SVP_VAR,
-                                                               stopTmp,
-                                                               NULL,
-                                                               new CallExpr("initCounts"));
+  ShadowVarSymbol *windowLate = ShadowVarSymbol::buildForPrefix(SVP_VAR,
+                                                                windowLateTmp,
+                                                                NULL,
+                                                                new CallExpr("initCounts"));
+  ShadowVarSymbol *windowUseless = ShadowVarSymbol::buildForPrefix(SVP_VAR,
+                                                                   windowUselessTmp,
+                                                                   NULL,
+                                                                   new CallExpr("initCounts"));
+  ShadowVarSymbol *stopPrefetching = ShadowVarSymbol::buildForPrefix(SVP_VAR,
+                                                                     stopTmp,
+                                                                     NULL,
+                                                                     new CallExpr("initBool"));
 
 
   // I think this is here when gathering the prefetch usage patterns?
@@ -4177,12 +4145,14 @@ static void addTaskPrivateVariablesToForallARP(ForallStmt *forall,
 
   forall->shadowVariables().insertAtTail(prefetchDistance->defPoint);
   forall->shadowVariables().insertAtTail(count->defPoint);
-  forall->shadowVariables().insertAtTail(window->defPoint);
-  forall->shadowVariables().insertAtTail(stopCount->defPoint);
+  forall->shadowVariables().insertAtTail(windowLate->defPoint);
+  forall->shadowVariables().insertAtTail(windowUseless->defPoint);
+  forall->shadowVariables().insertAtTail(stopPrefetching->defPoint);
   candidate.prefetchDistance = prefetchDistance;
   candidate.iterCount = count;
-  candidate.window = window;
-  candidate.stopCount = stopCount;
+  candidate.windowLate = windowLate;
+  candidate.windowUseless = windowUseless;
+  candidate.stopPrefetching = stopPrefetching;
 
 } /* end of addTaskPrivateVariablesToForallARP */
 
@@ -4263,7 +4233,7 @@ static void createStaticCheckARP(ForallStmt *forall,
 /*
     This function adds an if-then-else structure that checks whether the count
     variable that was added to the forall's task-private variables is greater than
-    numSampleIterations. If it isn't, we increment the count by 1. Else, we add a
+    numSamples. If it isn't, we increment the count by 1. Else, we add a
     call to adjust the prefetch distance.
 
     Basically, we're creating the code that says "execute the specified number of
@@ -4286,7 +4256,7 @@ static void createPrefetchAdjustmentCheck(ForallStmt *forall,
 {
   Expr *countCheck = new CallExpr("<",
                                   candidate.iterCount,
-                                  candidate.numSampleIterations);
+                                  candidate.numSamples);
   BlockStmt *thenBlock = new BlockStmt();
   BlockStmt *elseBlock = new BlockStmt();
   CondStmt *cond = new CondStmt(countCheck, thenBlock, elseBlock);
@@ -4297,13 +4267,14 @@ static void createPrefetchAdjustmentCheck(ForallStmt *forall,
   // elseBlock calls adjustPrefetchDistance and then sets count to 0
   CallExpr *adjustDist = new CallExpr("adjustPrefetchDistance",
                                       candidate.prefetchDistance,
-                                      candidate.window,
-                                      candidate.stopCount);
+                                      candidate.windowLate,
+                                      candidate.windowUseless,
+                                      candidate.stopPrefetching);
   elseBlock->insertAtHead(adjustDist);
   elseBlock->insertAtTail(new CallExpr("=", candidate.iterCount, new_IntSymbol(0)));
 
-  // if-then-else goes at beginning of the distCond then-block
-  candidate.distCond->thenStmt->insertAtHead(cond);
+  // if-then-else goes at beginning of the staticCond then-block
+  candidate.staticCond->thenStmt->insertAtHead(cond);
 
 } /* end of createPrefetchAdjustmentCheck */
 
@@ -4313,6 +4284,9 @@ static void createPrefetchAdjustmentCheck(ForallStmt *forall,
     adaptive remote prefetching (ARP) optimization. It creates an if-then structure 
     so that if the prefetch is NOT out of bounds, we'll do the prefetch. We add calls 
     to do the prefetch in createPrefetchCallARP().
+
+    We also add a check to this for "stopPrefetching != true", since that also determines
+    whether we do a prefetch.
 
     Arguments:
     forall -> the forall with the candidate
@@ -4343,10 +4317,14 @@ static void createOutOfBoundsCheckARP(ForallStmt *forall,
   //     if we're not out of bounds, do the prefetch. This goes in the then-block
   //     of our distance != -1 check/condition. The prefetch call itself
   //     will be added in createPrefetchCallARP()
-  Expr *outOfBoundsCond = new CallExpr("<=", prefetchIndex, candidate.lastValidIndex);
+  Expr *outOfBoundsExpr = new CallExpr("<=", prefetchIndex, candidate.lastValidIndex);
+  Expr *stopPrefetchingExpr = new CallExpr("!=", candidate.stopPrefetching, gTrue);
+  Expr *prefetchCheck = new CallExpr("==",
+                                     new CallExpr("&&", stopPrefetchingExpr, outOfBoundsExpr),
+                                     gTrue);
   BlockStmt *thenBlock = new BlockStmt();
-  CondStmt *cond = new CondStmt(outOfBoundsCond, thenBlock, NULL);
-  candidate.distCond->thenStmt->insertAtTail(cond);
+  CondStmt *cond = new CondStmt(prefetchCheck, thenBlock, NULL);
+  candidate.staticCond->thenStmt->insertAtTail(cond);
   candidate.outOfBoundsCond = cond;
 
 } /* end of createOutOfBoundsCheckARP */
@@ -4390,25 +4368,23 @@ static void createOutOfBoundsCheckARP(ForallStmt *forall,
         reset_prefetch_counters();
         const lastValidIndex = getLastLoopIndex(..);
         const loopStride = getLoopStride(..);
-        const numSampleIterations = getPrefetchSampleSize(..);
-        forall i in ... with (var prefetchDistance, var count, var window, var stopCount) {
+        const numSamples = getPrefetchSampleSize(..);
+        forall i in ... with (var prefetchDistance, var count, var windowLate, var windowUseless, var stopPrefetching) {
             param staticPrefetchCheck = chpl__isPrefetchSupported(..);
             if staticPrefetchCheck == true {
-                if prefetchDistance > 0 {
-                    if count < numSampleIterations {
-                        count += 1
+                if count < numSamples {
+                    count += 1
+                }
+                else {
+                    adjustPrefetchDistance(prefetchDistance, windowLate, windowUseless, stopPrefetching);
+                    count = 0;
+                }
+                if !stopPrefetching && (i+(prefetchDistance * loopStride)) <= lastValidIndex {
+                    if isArray(loopIteratorSym) {
+                        prefetch for array
                     }
                     else {
-                        adjustPrefetchDistance(prefetchDistance, window, stopCount);
-                        count = 0;
-                    }
-                    if (i+(prefetchDistance * loopStride)) <= lastValidIndex {
-                        if isArray(loopIteratorSym) {
-                            prefetch for array
-                        }
-                        else {
-                            prefetch for domains and ranges
-                        }
+                        prefetch for domains and ranges
                     }
                 }
             }

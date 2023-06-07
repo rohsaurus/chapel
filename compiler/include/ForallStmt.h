@@ -112,35 +112,29 @@ typedef struct AdaptiveRemotePrefetchingCandidate {
 
   // The prefetch distance Symbol for this candidate. It is a shadow
   // variable as part of the forall. We also have shadow variables for
-  // the iteration count and window
+  // the iteration count and windows, etc.
   ShadowVarSymbol *prefetchDistance;
-
   ShadowVarSymbol *iterCount;
-  ShadowVarSymbol *window;
+  ShadowVarSymbol *windowLate;
+  ShadowVarSymbol *windowUseless;
+  ShadowVarSymbol *stopPrefetching;
   ShadowVarSymbol *distArr;
-  ShadowVarSymbol *stopCount;
 
   // Unique ID given to the candidate
   int ID;
 
   // VarSymbols for the loopStride and lastValidIndex. We'll
   // refer to these when inserting calls to Chapel functions to
-  // support the optimization. We also have a VarSymbol for the
-  // number of sample iterations to run before adjusting the distance.
+  // support the optimization.
   VarSymbol *loopStride;
   VarSymbol *lastValidIndex;
-  VarSymbol *numSampleIterations;
+  VarSymbol *numSamples;
 
   // The static check variable used to "control" whether the
   // optimization will be performed or not. We also have the
   // CondStmt it is used in
   VarSymbol *staticCheck;
   CondStmt *staticCond;
-
-  // This is the CondStmt that says whether we are doing prefetching
-  // or not as a result of the timeout we have (we set the distance
-  // to -1 if we encountered too many useless prefetches).
-  CondStmt *distCond;
 
   // CondStmt for the out-of-bounds check
   CondStmt *outOfBoundsCond;
