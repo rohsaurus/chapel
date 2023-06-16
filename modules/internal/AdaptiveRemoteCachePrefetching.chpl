@@ -522,7 +522,6 @@ module AdaptiveRemoteCachePrefetching {
             const numMisses = per_cache_num_get_misses();
             const numHits = per_cache_num_get_hits();
             const missRate = ((numMisses:real)/(numMisses+numHits))*100:int;
-            const tmp = ((numMisses:real)/(numMisses+numHits))*100;
             if (missRate > MISS_TOLERANCE) {
                 stoppedPrefetching = false;
                 windowLate = 0;
@@ -591,6 +590,7 @@ module AdaptiveRemoteCachePrefetching {
             }
             else {
                 dist = max(dist-1, MIN_PREFETCH_DISTANCE);
+                windowLate = 0;
             }
         }
 
