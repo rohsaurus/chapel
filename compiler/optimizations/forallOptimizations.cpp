@@ -4131,17 +4131,17 @@ static void addTaskPrivateVariablesToForallARP(ForallStmt *forall,
                                                                      new CallExpr("initBool"));
 
 
-  // I think this is here when gathering the prefetch usage patterns?
+  // BEGIN PREFETCH DISTANCE STATS
   /*UnresolvedSymExpr *distArrTmp = new UnresolvedSymExpr(astr("distArray_", ID));
   ShadowVarSymbol *distArr = ShadowVarSymbol::buildForPrefix(SVP_REF,
                                                             distArrTmp,
                                                             NULL,
                                                             new CallExpr("getDistArray"));
   forall->shadowVariables().insertAtTail(distArr->defPoint);
-  //forall->insertAfter(new CallExpr("printDistanceStats"));
-  //forall->insertAfter(new CallExpr("resetTaskIDs"));
-  candidate.distArr = distArr;
-  */
+  forall->insertAfter(new CallExpr("printDistanceStats"));
+  forall->insertAfter(new CallExpr("resetTaskIDs"));
+  candidate.distArr = distArr;*/
+  // END PREFETCH DISTANCE STATS
 
   forall->shadowVariables().insertAtTail(prefetchDistance->defPoint);
   forall->shadowVariables().insertAtTail(count->defPoint);
@@ -4490,12 +4490,14 @@ static void createPrefetchCallARP(ForallStmt *forall,
   if (prefetchCallArray != NULL) {
     thenBlock->insertAtHead(prefetchCallArray);
     elseBlock->insertAtHead(prefetchCallDomainOrRange);
+    // Uncomment this line when gather prefetch distance patterns
     //elseBlock->insertAtHead(new CallExpr("logDistance", candidate.prefetchDistance, candidate.distArr));
   }
   else {
     // Didn't have ARRAY_OR_DOMAIN, so only need to worry about prefetchCallDomainOrRange.
     // It goes into the then-block for the out-of-bounds check
     candidate.outOfBoundsCond->thenStmt->insertAtTail(prefetchCallDomainOrRange);
+    // Uncomment this line when gather prefetch distance patterns
     //candidate.outOfBoundsCond->thenStmt->insertAtTail(new CallExpr("logDistance", candidate.prefetchDistance, candidate.distArr));
   }
 
