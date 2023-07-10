@@ -601,7 +601,10 @@ module AdaptiveRemoteCachePrefetching {
 
 
     // This is a version that keeps the distance constant (i.e., does nothing
-    inline proc adjustPrefetchDistance(ref dist : int, ref window : int) where CONSTANT_PREFETCHES == true
+    inline proc adjustPrefetchDistance(ref dist : int,
+                                       ref windowLate : int,
+                                       ref windowUseless : int,
+                                       ref stoppedPrefetching : bool) where CONSTANT_PREFETCHES == true
     {
         return;
     }
