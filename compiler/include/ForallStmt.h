@@ -181,6 +181,7 @@ typedef struct AdaptiveRemotePrefetchingCandidate {
   ShadowVarSymbol *windowUseless;
   ShadowVarSymbol *stopPrefetching;
   ShadowVarSymbol *distArr;
+  ShadowVarSymbol *countArr;
 
   // Unique ID given to the candidate
   int ID;
