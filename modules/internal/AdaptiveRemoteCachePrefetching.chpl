@@ -590,7 +590,7 @@ module AdaptiveRemoteCachePrefetching {
             }
             else {
                 dist = max(dist-1, MIN_PREFETCH_DISTANCE);
-                windowLate = 0;
+                //windowLate = 0;
             }
         }
 
