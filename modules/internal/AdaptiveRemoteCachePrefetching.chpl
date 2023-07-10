@@ -510,6 +510,7 @@ module AdaptiveRemoteCachePrefetching {
     inline proc adjustPrefetchDistance(ref dist : int, 
                                        ref windowLate : int, 
                                        ref windowUseless : int,
+                                       //ref countArray : [?D] int, /* TODO uncomment this to track stops/restarts */
                                        ref stoppedPrefetching : bool) where CONSTANT_PREFETCHES == false
     {
         //###################################################################################
@@ -526,6 +527,7 @@ module AdaptiveRemoteCachePrefetching {
                 stoppedPrefetching = false;
                 windowLate = 0;
                 windowUseless = 0;
+                //countArray[1] += 1; // TODO uncomment this to count restarts
             }
             // Reset counters for next window
             reset_per_cache_prefetch_counters();
@@ -561,6 +563,7 @@ module AdaptiveRemoteCachePrefetching {
                 stoppedPrefetching = true;
                 windowUseless = 0;
                 windowLate = 0;
+                //countArray[0] += 1; // TODO uncomment this to track stops
                 // Reset counters for next window
                 reset_per_cache_prefetch_counters();
                 reset_per_cache_get_counters();
@@ -669,6 +672,31 @@ module AdaptiveRemoteCachePrefetching {
                 writef("\t[%i] = %i\n", dist, count);
             }
             writef("\n");
+        }
+    }
+
+    // Utility code to monitor how many times a given task stops/restarts prefetching.
+    // Each task is given two counters, one for stops and one for restarts. Index 0
+    // will be for stops, index 1 will be restarts
+    var countArrays = Block.createArray({0..#numArrays}, [0..#2] int);
+    forall arr in countArrays {
+        arr = 0;
+    }
+    // This is called within the forall with's clause. It gives a task its own array to
+    // keep track of the counts. We ensure it is co-located on the locale where that task is
+    // using indexArray
+    inline proc getCountArray() ref
+    {
+        const taskID = indexArray[here.id].fetchAdd(1) + (here.id * here.maxTaskPar);
+        return countArrays[taskID];
+    }
+    // Prints out the start/stop stats
+    inline proc printStopRestartStats()
+    {
+        writef("$$$ Prefetch Stop/RestartStatistics\n");
+        for (idx, arr) in zip(countArrays.domain, countArrays) {
+            writef("+ Task %i on Locale %i:\n", idx, arr.locale.id);
+            writef("\tStops = %i\n\tRestarts = %i\n\n", arr[0], arr[1]);
         }
     }
     

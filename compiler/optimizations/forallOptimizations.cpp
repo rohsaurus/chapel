@@ -4143,6 +4143,18 @@ static void addTaskPrivateVariablesToForallARP(ForallStmt *forall,
   candidate.distArr = distArr;*/
   // END PREFETCH DISTANCE STATS
 
+  // BEGIN PREFETCH STOP/RESTART STATS
+  /*UnresolvedSymExpr *countArrTmp = new UnresolvedSymExpr(astr("countArray_", ID));
+  ShadowVarSymbol *countArr = ShadowVarSymbol::buildForPrefix(SVP_REF,
+                                                              countArrTmp,
+                                                              NULL,
+                                                              new CallExpr("getCountArray"));
+  forall->shadowVariables().insertAtTail(countArr->defPoint);
+  forall->insertAfter(new CallExpr("printStopRestartStats"));
+  forall->insertAfter(new CallExpr("resetTaskIDs"));
+  candidate.countArr = countArr;*/
+  // END PREFETCH STOP/RESTART STATS
+
   forall->shadowVariables().insertAtTail(prefetchDistance->defPoint);
   forall->shadowVariables().insertAtTail(count->defPoint);
   forall->shadowVariables().insertAtTail(windowLate->defPoint);
@@ -4270,6 +4282,14 @@ static void createPrefetchAdjustmentCheck(ForallStmt *forall,
                                       candidate.windowLate,
                                       candidate.windowUseless,
                                       candidate.stopPrefetching);
+  // Uncomment the line below and comment out the line above when gathering stop/restart metrics
+  /*CallExpr *adjustDist = new CallExpr("adjustPrefetchDistance",
+                                      candidate.prefetchDistance,
+                                      candidate.windowLate,
+                                      candidate.windowUseless,
+                                      candidate.countArr,
+                                      candidate.stopPrefetching);*/
+
   elseBlock->insertAtHead(adjustDist);
   elseBlock->insertAtTail(new CallExpr("=", candidate.iterCount, new_IntSymbol(0)));
 
