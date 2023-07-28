@@ -603,12 +603,57 @@ module AdaptiveRemoteCachePrefetching {
     } 
 
 
-    // This is a version that keeps the distance constant (i.e., does nothing
+    // This is a version that keeps the distance constant and but will still try to stop/restart
     inline proc adjustPrefetchDistance(ref dist : int,
                                        ref windowLate : int,
                                        ref windowUseless : int,
                                        ref stoppedPrefetching : bool) where CONSTANT_PREFETCHES == true
     {
+        if (stoppedPrefetching == true) {
+            const numMisses = per_cache_num_get_misses();
+            const numHits = per_cache_num_get_hits();
+            const missRate = ((numMisses:real)/(numMisses+numHits))*100:int;
+            if (missRate > MISS_TOLERANCE) {
+                stoppedPrefetching = false;
+                windowLate = 0;
+                windowUseless = 0;
+            }
+            // Reset counters for next window
+            reset_per_cache_prefetch_counters();
+            reset_per_cache_get_counters();
+            return;
+        }
+        const numPrefetches = get_per_cache_num_prefetches();
+        const numUselessPrefetches = get_per_cache_num_prefetches_useless();
+        const numPrefetchesComp = numPrefetches - numUselessPrefetches;
+        const uselessPrefetchPercent = ((numUselessPrefetches:real / numPrefetches)*100):int;
+
+        // If the amount of useless prefetches is too high, and has been too high for PREFETCH_TIMEOUT
+        // consecutive windows, then set stoppedPrefetching to true and return. This means we are
+        // likely not getting a benefit from prefetching so we should stop for now.
+        if (uselessPrefetchPercent > USELESS_PREFETCH_TOLERANCE) {
+            if (windowUseless < PREFETCH_TIMEOUT) {
+                // Haven't reach the timeout yet, so increment the window
+                windowUseless += 1;
+            }
+            else {
+                // We've been above the threshold too many times in a row, so
+                // quite prefetching for now.
+                stoppedPrefetching = true;
+                windowUseless = 0;
+                windowLate = 0;
+                // Reset counters for next window
+                reset_per_cache_prefetch_counters();
+                reset_per_cache_get_counters();
+                return;
+            }
+        }
+        else {
+            // We're below the threshold, so reset the window count
+            windowUseless = 0;
+        }
+        reset_per_cache_prefetch_counters();
+        reset_per_cache_get_counters();
         return;
     }
 
