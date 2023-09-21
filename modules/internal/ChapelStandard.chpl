@@ -75,6 +75,9 @@ module ChapelStandard {
 
   // added by tbrolin
   public use AdaptiveRemoteCachePrefetching;
+  public use CommunicationSchedule;
+  public use SelectiveDataReplication;
+  public use InspectorExecutor;
 
   // Standard modules.
   public use Types as Types;
