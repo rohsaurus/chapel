@@ -96,4 +96,11 @@ extern FnSymbol *gChplCreateStringWithLiteral;
 extern FnSymbol *gChplCreateBytesWithLiteral;
 extern FnSymbol *gChplBuildLocaleId;
 
+// added by tbrolin 02/18/2022
+extern FnSymbol *gInspectorOn;
+extern FnSymbol *gSetHasOuterLoop;
+extern FnSymbol *gUnsetHasOuterLoop;
+extern FnSymbol *gSetHasInvalidEnclosingStructure;
+extern FnSymbol *gUnsetHasInvalidEnclosingStructure;
+
 #endif

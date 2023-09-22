@@ -78,6 +78,7 @@ module ChapelStandard {
   public use CommunicationSchedule;
   public use SelectiveDataReplication;
   public use InspectorExecutor;
+  public use AutoRemoteWriteAggregation;
 
   // Standard modules.
   public use Types as Types;

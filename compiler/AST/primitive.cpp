@@ -987,6 +987,8 @@ initPrimitive() {
 
   // Added by tbrolin
   prim_def(PRIM_MAYBE_PREFETCH_CANDIDATE, "may be candidate for prefetching", returnInfoUnknown);
+  prim_def(PRIM_MAYBE_IE_CANDIDATE, "may be candidate for IE optimization", returnInfoUnknown);
+  prim_def(PRIM_MAYBE_AGGR_CANDIDATE, "may be candidate for aggregation optimization", returnInfoUnknown);
 
   prim_def(PRIM_ERROR, "error", returnInfoVoid, true);
   prim_def(PRIM_WARNING, "warning", returnInfoVoid, true);

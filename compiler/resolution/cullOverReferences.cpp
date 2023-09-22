@@ -1628,8 +1628,11 @@ void cullOverReferences() {
 
   // added by tbrolin
   // perform post-analysis for adaptive remote prefetching
-  if (fOptimizeIrregularArrayAccesses) {
+  if (fPrefetchOpt) {
     adaptiveRemotePrefetchingPostAnalysis();
+  }
+  if (fIEOpt) {
+    inspectorExecutorPostAnalysis();
   }
 }
 

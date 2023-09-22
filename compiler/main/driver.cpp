@@ -200,7 +200,10 @@ bool fAutoAggregation = false;
 bool fReportAutoAggregation= false;
 
 // Added by tbrolin
-bool fOptimizeIrregularArrayAccesses = false;
+bool fPrefetchOpt = false;
+bool fIEOpt = false;
+bool fAggrOpt = false;
+//bool fOptimizeIrregularArrayAccesses = false;
 bool fReportIrregArrayAccesses = false;
 
 bool  printPasses     = false;
@@ -1088,8 +1091,11 @@ static ArgumentDescription arg_desc[] = {
  {"live-analysis", ' ', NULL, "Enable [disable] live variable analysis", "n", &fNoLiveAnalysis, "CHPL_DISABLE_LIVE_ANALYSIS", NULL},
  {"loop-invariant-code-motion", ' ', NULL, "Enable [disable] loop invariant code motion", "n", &fNoLoopInvariantCodeMotion, NULL, NULL},
  {"optimize-forall-unordered-ops", ' ', NULL, "Enable [disable] optimization of foralls to unordered operations", "n", &fNoOptimizeForallUnordered, "CHPL_DISABLE_OPTIMIZE_FORALL_UNORDERED_OPS", NULL},
-// Added by tbrolin
- {"optimize-irregular-array-accesses", ' ', NULL, "Enable [disable] optimizations for irregular array accesses", "N", &fOptimizeIrregularArrayAccesses, "CHPL_OPTIMIZE_IRREGULAR_ARRAY_ACCESSES", NULL},
+ // Added by tbrolin
+ {"adaptive-remote-prefetching", ' ', NULL, "Enable [disable] adaptive remote prefetching optimization for irregular array accesses", "N", &fPrefetchOpt, "CHPL_PREFETCH_OPT", NULL},
+ {"selective-data-replication", ' ', NULL, "Enable [disable] selective data replication optimization for irregular array accesses", "N", &fIEOpt, "CHPL_IE_OPT", NULL},
+ {"remote-write-aggregation", ' ', NULL, "Enable [disable] remote write aggregation optimization for irregular array accesses", "N", &fAggrOpt, "CHPL_AGGR_OPT", NULL},
+ //{"optimize-irregular-array-accesses", ' ', NULL, "Enable [disable] optimizations for irregular array accesses", "N", &fOptimizeIrregularArrayAccesses, "CHPL_OPTIMIZE_IRREGULAR_ARRAY_ACCESSES", NULL},
  {"optimize-range-iteration", ' ', NULL, "Enable [disable] optimization of iteration over anonymous ranges", "n", &fNoOptimizeRangeIteration, "CHPL_DISABLE_OPTIMIZE_RANGE_ITERATION", NULL},
  {"optimize-loop-iterators", ' ', NULL, "Enable [disable] optimization of iterators composed of a single loop", "n", &fNoOptimizeLoopIterators, "CHPL_DISABLE_OPTIMIZE_LOOP_ITERATORS", NULL},
  {"optimize-on-clauses", ' ', NULL, "Enable [disable] optimization of on clauses", "n", &fNoOptimizeOnClauses, "CHPL_DISABLE_OPTIMIZE_ON_CLAUSES", NULL},

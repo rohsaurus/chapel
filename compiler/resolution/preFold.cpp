@@ -886,6 +886,62 @@ static Expr* preFoldPrimOp(CallExpr* call) {
   }
 
   // added by tbrolin
+  case PRIM_MAYBE_AGGR_CANDIDATE: {
+    retval = preFoldMaybeIrregWriteAggregation(call);
+    // If retval is NULL, then the optimization is invalid. So
+    // we just replace call with a no-op.
+    if (retval != NULL) {
+      call->insertAfter(retval);
+      normalize(retval);
+      retval = new CallExpr(PRIM_NOOP);
+      call->replace(retval);
+    }
+    else {
+      retval = new CallExpr(PRIM_NOOP);
+      call->replace(retval);
+    }
+    break;
+  }
+  case PRIM_MAYBE_IE_CANDIDATE: {
+    // If call is part of the executor loop, it'll be part
+    // of a PRIM_MOVE, so we need to handle it a certain way.
+    if(CallExpr *parentCall = toCallExpr(call->parentExpr)) {
+      INT_ASSERT(parentCall->isPrimitive(PRIM_MOVE));
+      retval = preFoldMaybeIECandidate(call);
+      call->replace(retval);
+      BlockStmt *dummyBlock = new BlockStmt();
+      parentCall->insertAfter(dummyBlock);
+      dummyBlock->insertAtTail(parentCall->remove());
+      normalize(dummyBlock);
+      resolveBlockStmt(dummyBlock);
+      dummyBlock->flattenAndRemove();
+    }
+    else {
+      // Otherwise, call is part of the inspector loop, which is
+      // stripped down to contain nothing but the primitive. It
+      // is not part of a PRIM_MOVE, as it is now going to be a
+      // void function call.
+      retval = preFoldMaybeIECandidate(call);
+      if (retval == NULL) {
+        // optimization could not move forward, so we need to
+        // basically "erase" the primitive call. Let's just stick
+        // a no-op there, since the entire inspector-executor loop
+        // structure will be wiped away during dead-code elimination
+        retval = new CallExpr(PRIM_NOOP);
+        call->replace(retval);
+      }
+      else {
+        BlockStmt *dummyBlock = new BlockStmt();
+        dummyBlock->insertAtTail(retval);
+        call->insertBefore(dummyBlock);
+        call->remove();
+        normalize(dummyBlock);
+        resolveBlockStmt(dummyBlock);
+        dummyBlock->flattenAndRemove();
+      }
+    }
+    break;
+  }
   case PRIM_MAYBE_PREFETCH_CANDIDATE: {
     // For Adaptive Remote prefetching (ARP), the primitive
     // is always on the RHS, like the IE optimization. So

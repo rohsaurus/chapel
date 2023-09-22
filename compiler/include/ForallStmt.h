@@ -34,6 +34,28 @@ enum ForallAutoLocalAccessCloneType {
 };
 
 // added by tbrolin
+enum ForallIrregAccessCloneType {
+  ORIGINAL,
+  CLONED,
+  PENDING_OPTIMIZATION,
+  INSPECTOR,
+  EXECUTOR,
+  AGGREGATED,
+  INVALID_OPT,
+};
+enum ieIndexIteratorType {
+  NORMAL,               // for i in foo
+  NORMAL_REC_FIELD,     // for i in foo where foo is ref foo = rec.field
+  DOT_DOMAIN,           // for i in foo.domain
+  DOT_DOMAIN_REC_FIELD  // for i in foo.domain where foo is ref foo = rec.field
+};
+enum IrregWriteAggrOp {
+  INVALID,      // indicates that the operation is not valid for aggregation
+  GENERAL,      // general operation (A[B[i]] op val)
+  ASSIGNMENT,   // A[B[i]] = val
+  PLUSEQ,       // A[B[i]] += val
+  ATOMIC_ADD    // A[B[i]].add(val)
+};
 enum PrefetchLoopIteratorType {
   INVALID_LOOP_TYPE,
   ARRAY_OR_DOMAIN,
@@ -146,7 +168,6 @@ typedef struct AdaptiveRemotePrefetchingCandidate {
 
 } AdaptiveRemotePrefetchingCandidate;
 
-
 class ForallOptimizationInfo {
   public:
     bool infoGathered;
@@ -171,8 +192,79 @@ class ForallOptimizationInfo {
     // adaptive remote prefetching optimization
     bool adaptiveRemotePrefetchingChecked;
     int arpID;
-    // Holds candidate accesses for adaptive remote prefetching.
+    // Holds candidates for prefetching optimization; since we support more than 1
+    // prefetch candidate per forall, it is cleaner to store candidates in a vector,
+    // encapsulating their info into a struct.
     std::vector<AdaptiveRemotePrefetchingCandidate> adaptiveRemotePrefetchingCandidates;
+
+    // added by tbrolin
+    // For the IE optimization, we only allow 1 candidate per forall, so not much sense
+    // in storing a vector of candidates like we do above for prefetching. But our existing
+    // code assumed we had a vector, so might as well keep it.
+    std::vector< std::pair<CallExpr *, CallExpr *> > ieCandidates;
+    std::vector< std::pair<Symbol *, Symbol *> > ieCandidatesResolved;
+    // unique ID given to the forall for the inspector-executor
+    // optimizaton
+    int ieID;
+    VarSymbol *ieIDVar;
+    // the call-site hash we compute and pass into various procedures
+    // to access the replicated arrays
+    VarSymbol *ieHash;
+    // Global inspector flag used by the forall.
+    VarSymbol *inspectorFlag;
+    // holds the forall iterator Symbol found during normalization.
+    // In the case of "forall a in foo" this will hold "foo". In the
+    // case of "forall a in foo.domain", it also holds "foo". Later on,
+    // we'll find its domain, which is what we really care about.
+    Symbol *ieForallIteratorSym;
+    // Holds the Symbol that yields "i" in A[B[i]]. We find this
+    // during normalization. In the case of "... i in foo" we get
+    // foo. In the case of "... i in foo.domain" we also get foo.
+    // If foo is defined inside the forall as a ref to something
+    // outside, we will get that outside alias. The special case is
+    // when we have something like "ref foo = rec.field". In that case,
+    // we get foo but mark it as special.
+    Symbol *ieIndexIterator;
+    // will be NORMAL if we had something like "i in foo"
+    // and foo is defined outside of the loop or is an alias
+    // to something outside of the loop. It will be DOT_DOMAIN
+    // if we had something like "i in foo.domain". It will be
+    // REC_FIELD if we had something like "ref foo = rec.field"
+    ieIndexIteratorType indexIteratorType;
+    // Flag that says if the loop has been processed for the IE
+    // optimization, and the clone type.
+    bool inspectorExecutorChecked;
+    ForallIrregAccessCloneType cloneTypeIE;
+    // Map of all relevant loop iterator symbols for the IE optimization.
+    // These are iterators that yield symbols used in the irregular access.
+    // We have a map of pairs since we could have the same Symbol used in two
+    // different loop iterators but one as "foo" and the other as "foo.domain".
+    // In that way, they are different based on their index iterator type.
+    std::map<std::pair<Symbol *, ieIndexIteratorType>, bool> ieLoopIteratorSyms;
+    // Map of all the relevant variables used in an IE candidate access.
+    // We ensure they are yielded by loops over arrays/domains and track
+    // changes to those array/domains. But we also need to ensure that the
+    // index variables themselves are not changed within the forall. This is
+    // allowed if the variable is yielded by an array
+    std::set<Symbol *> ieIndexSymbols;
+    // Keeps track of the function ID that this forall is nested in.
+    // We only count the function if it isn't the module init function.
+    // We use this for our call path analysis. During normalization, we
+    // set this field to a unqiue ID, and any forall in the same function
+    // gets the same ID.
+    int functionID;
+    // Determined during normalization whether we had something like
+    // "ref t = A[B[i]]". We want to know this during prefolding so we
+    // can make some additional checks.
+    bool nonConstRefIE;
+    
+    // added by tbrolin
+    // Stuff for remote write aggregation. We don't need to store much, just LHS and RHS
+    bool irregWriteAggregationChecked;
+    // what we need to store is the LHS (A[B[i]]), the RHS and
+    // operation type (+=, =, .add(), or GENERAL).
+    std::vector< std::tuple<Expr *, Expr *, IrregWriteAggrOp> > irregWriteAggrCandidates;
+    
 
     // the static check control symbol added for symbol
     std::map<Symbol *, Symbol *> staticCheckSymForSymMap;

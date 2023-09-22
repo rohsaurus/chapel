@@ -69,8 +69,11 @@ Expr *preFoldMaybeAggregateAssign(CallExpr *call);
 void adjustPrimsInFastFollowerBody(BlockStmt *body);
 
 // Added by tbrolin
+CallExpr *preFoldMaybeIECandidate(CallExpr *call);
 CallExpr *preFoldMaybePrefetchingCandidate(CallExpr *call);
+CallExpr *preFoldMaybeIrregWriteAggregation(CallExpr *call);
 void adaptiveRemotePrefetchingPostAnalysis();
+void inspectorExecutorPostAnalysis();
 void pruneArrayFieldsToDomainFieldsMap();
 
 void finalizeForallOptimizationsResolution();

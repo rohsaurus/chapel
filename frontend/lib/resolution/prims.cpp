@@ -660,6 +660,8 @@ CallResolutionResult resolvePrimCall(Context* context,
     case NUM_KNOWN_PRIMS:
     // added by tbrolin
     case PRIM_MAYBE_PREFETCH_CANDIDATE:
+    case PRIM_MAYBE_IE_CANDIDATE:
+    case PRIM_MAYBE_AGGR_CANDIDATE:
       CHPL_ASSERT(false && "not implemented yet");
 
     // no default to get a warning when new primitives are added
