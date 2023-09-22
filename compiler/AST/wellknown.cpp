@@ -99,6 +99,13 @@ FnSymbol *gChplCreateStringWithLiteral;
 FnSymbol *gChplCreateBytesWithLiteral;
 FnSymbol *gChplBuildLocaleId;
 
+// added by tbrolin 02/18/2022
+FnSymbol *gInspectorOn;
+FnSymbol *gSetHasOuterLoop;
+FnSymbol *gUnsetHasOuterLoop;
+FnSymbol *gSetHasInvalidEnclosingStructure;
+FnSymbol *gUnsetHasInvalidEnclosingStructure;
+
 /************************************* | **************************************
 *                                                                             *
 *                                                                             *
@@ -645,6 +652,27 @@ static WellKnownFn sWellKnownFns[] = {
     "chpl_buildLocaleID",
     &gChplBuildLocaleId,
     FLAG_UNKNOWN
+  },
+  // added by tbrolin 02/18/2022
+  {
+    "inspectorOn",
+    &gInspectorOn,
+  },
+  {
+    "setHasOuterLoop",
+    &gSetHasOuterLoop,
+  },
+  {
+    "unsetHasOuterLoop",
+    &gUnsetHasOuterLoop,
+  },
+  {
+    "setHasInvalidEnclosingStructure",
+    &gSetHasInvalidEnclosingStructure,
+  },
+  {
+    "unsetHasInvalidEnclosingStructure",
+    &gUnsetHasInvalidEnclosingStructure,
   },
 };
 

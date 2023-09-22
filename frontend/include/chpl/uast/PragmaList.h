@@ -49,6 +49,30 @@ PRAGMA(AGG_GENERATOR, ypr,
 PRAGMA(REMOTE_CACHE_PREFETCH, ypr,
        "remote cache prefetch",
        "this is the procedure for a remote cache prefetch")
+PRAGMA(IE_PRIMITIVE_ARG, ypr,
+       "part of IE candidate primitive",
+       "this var is part of the PRIM_MAYBE_IE_CANDIDATE primitive")
+PRAGMA(SDR_MOD_MARKER, ypr,
+       "selective data replication",
+       "this is the module for selecive data replication")
+PRAGMA(INSPECT_ACCESS, ypr,
+       "inspect access",
+       "this is the procedure for inspecting an access")
+PRAGMA(EXECUTE_ACCESS, ypr,
+       "execute access",
+       "this is the procedure for executing an access")
+PRAGMA(INSPECTOR_ON, ypr,
+       "inspector on",
+       "this is the procedure for turning on the inspector")
+PRAGMA(INSPECTOR_PREAMBLE, ypr,
+       "inspector preamble",
+       "this is the procedure to perform the inspector preamble")
+PRAGMA(EXECUTOR_PREAMBLE, ypr,
+       "executor preamble",
+       "this is the procedure to perform the executor preamble")
+PRAGMA(IE_MOD_MARKER, ypr,
+       "inspector executor module",
+       "this is the module for the inspector-executor")
 
 // Indicates an array implementation class can alias other array implementations
 // e.g. array views
