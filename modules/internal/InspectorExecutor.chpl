@@ -222,14 +222,14 @@ module InspectorExecutor {
     // to ensure that the domain being iterated over in the forall is distributed.
     // One version is matched when we pass in an array; the other will match on
     // anything else.
-    proc isBlock(D) param return false;
-    proc isBlock(D: BlockDom) param return true;
-    proc isCyclic(D) param return false;
-    proc isCyclic(D: CyclicDom) param return true;
-    proc isBlockCyclic(D) param return false;
-    proc isBlockCyclic(D: BlockCyclicDom) param return true;
-    proc isReplicated(D) param return false;
-    proc isReplicated(D: ReplicatedDom) param return true;
+    proc isBlock(D) param do return false;
+    proc isBlock(D: BlockDom) param do return true;
+    proc isCyclic(D) param do return false;
+    proc isCyclic(D: CyclicDom) param do return true;
+    proc isBlockCyclic(D) param do return false;
+    proc isBlockCyclic(D: BlockCyclicDom) param do return true;
+    proc isReplicated(D) param do return false;
+    proc isReplicated(D: ReplicatedDom) param do return true;
     proc chpl__isDistributed(D) param
     {
         return isBlock(D._value)       ||
