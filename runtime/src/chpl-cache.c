@@ -715,6 +715,22 @@ struct rdcache_s {
   chpl_comm_nb_handle_t *pending;
   cache_seqn_t *pending_sequence_numbers;
 
+  // added by tbrolin
+  // counters for the number of prefetches issued "to" this cache, the
+  // the number of prefetches that were waited on and the number of useless 
+  // prefetches (prefetch for data that is already in the cache).
+  //
+  // We need per-cache counters so we can make them non-atomic (and we also
+  // want to gather per-thread/task cache info). Note that by
+  // "prefetches" here we mean user directed prefetches, not ones
+  // performed automatically by the remote cache itself.
+  int64_t this_cache_num_prefetches;
+  int64_t this_cache_num_prefetches_waited;
+  int64_t this_cache_num_prefetches_useless;
+  // per-cache hit/miss counter for gets.
+  int64_t this_cache_num_get_hits;
+  int64_t this_cache_num_get_misses;
+
   // Lookup table
   __attribute__ ((aligned (64)))
   struct cache_table_slot_s table[];
@@ -967,15 +983,19 @@ struct rdcache_s* cache_create(void) {
 // mean that the entry was prefetched or read ahead but
 // never accessed before being evicted. We zero out the
 // prefetch_diags_flags at the end so we don't double count this event.
+//
+// modified by tbrolin: pass in the actual cache corresponding
+// to this entry so we can increment the per-cache non-atomic counter
 static
-void count_unused_prefetches(struct cache_entry_s* z)
+void count_unused_prefetches(struct rdcache_s* cache,
+                             struct cache_entry_s* z)
 {
-  if((z->prefetch_diags_flags & ENTRY_FLAGS_PREFETCHED) != 0) {
-    chpl_comm_diags_incr(cache_prefetch_unused);
+  /*if((z->prefetch_diags_flags & ENTRY_FLAGS_PREFETCHED) != 0) {
+    //chpl_comm_diags_incr(cache_prefetch_unused);
   }
   if((z->prefetch_diags_flags & ENTRY_FLAGS_READAHEADED) != 0) {
     chpl_comm_diags_incr(cache_readahead_unused);
-  }
+  }*/
   z->prefetch_diags_flags = 0;
 }
 
@@ -2029,17 +2049,22 @@ void unreserve_entry(struct rdcache_s* cache,
 // We call this when we had to wait for an inflight prefetch
 // or readahead to complete when we tried to do a get. We zero
 // out the prefetch_diags_flags at the end so we don't double count the event.
+//
+// modified by tbrolin: pass in the cache itself so we can
+// increment the per-cache non-atomic counters.
 static
-void count_waited_prefetch(struct cache_entry_s* entry,
+void count_waited_prefetch(struct rdcache_s* cache,
+                           struct cache_entry_s* entry,
                            chpl_bool waited)
 {
   if (waited && entry->prefetch_diags_flags != 0) {
     if (entry->prefetch_diags_flags & ENTRY_FLAGS_PREFETCHED) {
-      chpl_comm_diags_incr(cache_prefetch_waited);
+      cache->this_cache_num_prefetches_waited++;
+      //chpl_comm_diags_incr(cache_prefetch_waited);
     }
-    if (entry->prefetch_diags_flags & ENTRY_FLAGS_READAHEADED) {
+    /*if (entry->prefetch_diags_flags & ENTRY_FLAGS_READAHEADED) {
       chpl_comm_diags_incr(cache_readahead_waited);
-    }
+    }*/
     entry->prefetch_diags_flags = 0;
   }
 }
@@ -2157,12 +2182,12 @@ void flush_entry(struct rdcache_s* cache,
     if( any_valid_lines(entry->valid_lines, skip_lines, num_lines) ) {
       waited |= wait_for(cache, entry->max_prefetch_sequence_number);
     }
-    count_waited_prefetch(entry, waited);
+    count_waited_prefetch(cache, entry, waited);
   }
 
   // If invalidating, clear valid bits.
   if( op & FLUSH_DO_INVALIDATE ) {
-    count_unused_prefetches(entry);
+    //count_unused_prefetches(cache, entry);
     if( len == CACHEPAGE_SIZE ) {
       entry->readahead_skip = 0;
       entry->readahead_len = 0;
@@ -2177,7 +2202,7 @@ void flush_entry(struct rdcache_s* cache,
 
   // If evicting, remove the page from the cache and put it on a free list.
   if( op & FLUSH_DO_EVICT ) {
-    count_unused_prefetches(entry);
+    //count_unused_prefetches(cache, entry);
     // But, our entry no longer can have a page associated with it.
     page = entry->page;
     entry->page = NULL;
@@ -2970,11 +2995,19 @@ int cache_get_in_page(struct rdcache_s* cache,
       if (entry->max_prefetch_sequence_number >
           cache->completed_request_number) {
         chpl_bool waited = wait_for(cache, entry->max_prefetch_sequence_number);
-        count_waited_prefetch(entry, waited);
+        count_waited_prefetch(cache, entry, waited);
+        // NEW: if waited is false, then it means we did not have to wait for the data.
+        // We also know that we aren't issuing a prefetch, so this is "true" GET hit
+        if (!waited) { cache->this_cache_num_get_hits++; }
         // note: wait_for can yield, but entry is locked
         // no chance of deadlock since wait_for just processes comm events
         assert(entry->page && entry->entryReservedByTask == task_local);
         assert(entry->base.raddr == ra_page && entry->base.node == node);
+      }
+      else {
+        // NEW: I believe the "else" here is for accesses that we definitely aren't
+        // waiting for. So this would also be a true GET hit
+        cache->this_cache_num_get_hits++;
       }
 
       // Clear the prefetch flags to indicate that the data was used
@@ -3022,6 +3055,16 @@ int cache_get_in_page(struct rdcache_s* cache,
                                     commID, ln, fn);
         return 1;
       }
+    }
+    else {
+      // added by tbrolin
+      // if we're here, then we issued a prefetch for data that is already
+      // in the cache. This is considered a useless/wasted prefetch, since
+      // it incurs the overhead of bounds checking and issuing the prefetch
+      // but doesn't actually provide any benefits. We want to keep track of
+      // how many of these we see in case we want to use it in our heuristic.
+      cache->this_cache_num_prefetches_useless++;
+      cache->this_cache_num_prefetches++; // make sure we still count it as a prefetch
     }
 
     // "unlock" the entry
@@ -3105,11 +3148,13 @@ int cache_get_in_page(struct rdcache_s* cache,
   // Set the flag to indicate whether it was prefetched or readahead-ed
   if (isreadahead && !(entry->prefetch_diags_flags & ENTRY_FLAGS_READAHEADED)) {
     entry->prefetch_diags_flags |= ENTRY_FLAGS_READAHEADED;
-    chpl_comm_diags_incr(cache_num_page_readaheads);
+    //chpl_comm_diags_incr(cache_num_page_readaheads);
   }
   if (isprefetch && !isreadahead && !(entry->prefetch_diags_flags & ENTRY_FLAGS_PREFETCHED)) {
     entry->prefetch_diags_flags |= ENTRY_FLAGS_PREFETCHED;
-    chpl_comm_diags_incr(cache_num_prefetches);
+    // added by tbrolin: increment per-cache counter
+    cache->this_cache_num_prefetches++;
+    //chpl_comm_diags_incr(cache_num_prefetches);
   }
 
   // Decide what to store in the readahead trigger for this page
@@ -3851,10 +3896,11 @@ void chpl_cache_comm_put(void* addr, c_nodeid_t node, void* raddr,
                        commID, ln, fn);
 
   if (size != 0) {
-    if (all_hits)
+    /*if (all_hits)
       chpl_comm_diags_incr(cache_put_hits);
     else
       chpl_comm_diags_incr(cache_put_misses);
+    */
   }
 
   return;
@@ -3866,7 +3912,6 @@ void chpl_cache_comm_get(void *addr, c_nodeid_t node, void* raddr,
   struct rdcache_s* cache = tls_cache_remote_data();
   chpl_cache_taskPrvData_t* task_local = task_private_cache_data();
   int all_hits;
-
   if (!cache || size_merits_direct_comm(cache, size)) {
     if (cache)
       cache_invalidate(cache, task_local, node, (raddr_t)raddr, size);
@@ -3899,10 +3944,14 @@ void chpl_cache_comm_get(void *addr, c_nodeid_t node, void* raddr,
                        0, commID, ln, fn);
 
   if (size != 0) {
-    if (all_hits)
+    /*if (all_hits) {
       chpl_comm_diags_incr(cache_get_hits);
-    else
+    }*
+    else {
       chpl_comm_diags_incr(cache_get_misses);
+    }*/
+    if (!all_hits)
+      cache->this_cache_num_get_misses++;
   }
 
   return;
@@ -4253,6 +4302,54 @@ int chpl_cache_mock_get(c_nodeid_t node, uint64_t raddr, size_t size)
   return ret;
 }
 
+// added by tbrolin
+// Utility function to clear the per-cache counters for prefetches
+// and functions to return the per-cache counters
+void reset_per_cache_prefetch_counters(void)
+{
+  struct rdcache_s* cache = tls_cache_remote_data();
+  if (!cache) return;
+  cache->this_cache_num_prefetches = 0;
+  cache->this_cache_num_prefetches_waited = 0;
+  cache->this_cache_num_prefetches_useless = 0;
+}
+void reset_per_cache_get_counters(void)
+{
+  struct rdcache_s* cache = tls_cache_remote_data();
+  if (!cache) return;
+  cache->this_cache_num_get_hits = 0;
+  cache->this_cache_num_get_misses = 0;
+}
+int64_t get_per_cache_num_prefetches(void)
+{
+  struct rdcache_s* cache = tls_cache_remote_data();
+  if (!cache) return 0;
+  return cache->this_cache_num_prefetches;
+}
+int64_t get_per_cache_num_prefetches_waited(void)
+{
+  struct rdcache_s* cache = tls_cache_remote_data();
+  if (!cache) return 0;
+  return cache->this_cache_num_prefetches_waited;
+}
+int64_t get_per_cache_num_prefetches_useless(void)
+{
+  struct rdcache_s* cache = tls_cache_remote_data();
+  if (!cache) return 0;
+  return cache->this_cache_num_prefetches_useless;
+}
+int64_t get_per_cache_num_get_hits(void)
+{
+  struct rdcache_s* cache = tls_cache_remote_data();
+  if (!cache) return 0;
+  return cache->this_cache_num_get_hits;
+}
+int64_t get_per_cache_num_get_misses(void)
+{
+  struct rdcache_s* cache = tls_cache_remote_data();
+  if (!cache) return 0;
+  return cache->this_cache_num_get_misses;
+}
 
 #endif
 // end ifdef HAS_CHPL_CACHE_FNS

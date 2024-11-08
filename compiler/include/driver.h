@@ -91,6 +91,13 @@ extern bool fReportOptimizeForallUnordered;
 
 extern bool report_inlining;
 
+// Added by tbrolin
+extern bool fPrefetchOpt;
+extern bool fIEOpt;
+extern bool fAggrOpt;
+//extern bool fOptimizeIrregularArrayAccesses;
+extern bool fReportIrregArrayAccesses;
+
 // Chapel Envs
 bool useDefaultEnv(std::string key, bool isCrayPrgEnv);
 

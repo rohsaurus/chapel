@@ -33,6 +33,10 @@ extern bool resolved;
 extern bool intentsResolved;
 extern bool iteratorsLowered;
 
+// Added by tbrolin
+// maps AggregateTypes to submaps, which map field locations of
+// arrays to their corresponding domain field locations in the type.
+extern std::map<AggregateType *, std::map<int, int>> gArrFieldsToDomFields;
 
 //
 // prototypes of functions that are called as passes (alphabetical)

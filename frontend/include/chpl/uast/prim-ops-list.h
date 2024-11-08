@@ -203,6 +203,11 @@ PRIMITIVE_R(MAYBE_LOCAL_THIS, "may be local access")
 PRIMITIVE_R(MAYBE_LOCAL_ARR_ELEM, "may be local array element")
 PRIMITIVE_R(MAYBE_AGGREGATE_ASSIGN, "may be aggregated assignment")
 
+// added by tbrolin
+PRIMITIVE_R(MAYBE_PREFETCH_CANDIDATE, "may be candidate for prefetching")
+PRIMITIVE_R(MAYBE_IE_CANDIDATE, "may be candidate for IE optimization")
+PRIMITIVE_R(MAYBE_AGGR_CANDIDATE, "may be candidate for aggregation optimization")
+
 PRIMITIVE_R(ERROR, "error")
 PRIMITIVE_R(WARNING, "warning")
 PRIMITIVE_R(WHEN, "when case expressions")

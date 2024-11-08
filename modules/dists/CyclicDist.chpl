@@ -737,6 +737,12 @@ class CyclicArr: BaseRectangularArr {
   var locArr: [dom.dist.targetLocDom] unmanaged LocCyclicArr(eltType, rank, idxType);
   var myLocArr: unmanaged LocCyclicArr(eltType=eltType, rank=rank, idxType=idxType)?;
   const SENTINEL = max(rank*int);
+  // added by tbrolin 04/19/22
+  // multiple schedules for each optimization this array is involved in.
+  // hard-coded for now to 32 possible optimizations.
+  const D_ie : domain(1) = {0..#32};
+  var commSchedules : [D_ie] if rank == 1 then CommunicationSchedule(eltType,idxType,rank)
+                                          else CommunicationSchedule(eltType,rank*idxType,rank);
 }
 
 pragma "no copy return"

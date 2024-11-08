@@ -985,6 +985,11 @@ initPrimitive() {
   prim_def(PRIM_MAYBE_LOCAL_ARR_ELEM, "may be local array element", returnInfoUnknown);
   prim_def(PRIM_MAYBE_AGGREGATE_ASSIGN, "may be aggregated assignment", returnInfoUnknown);
 
+  // Added by tbrolin
+  prim_def(PRIM_MAYBE_PREFETCH_CANDIDATE, "may be candidate for prefetching", returnInfoUnknown);
+  prim_def(PRIM_MAYBE_IE_CANDIDATE, "may be candidate for IE optimization", returnInfoUnknown);
+  prim_def(PRIM_MAYBE_AGGR_CANDIDATE, "may be candidate for aggregation optimization", returnInfoUnknown);
+
   prim_def(PRIM_ERROR, "error", returnInfoVoid, true);
   prim_def(PRIM_WARNING, "warning", returnInfoVoid, true);
   prim_def(PRIM_WHEN, "when case expressions", returnInfoVoid);

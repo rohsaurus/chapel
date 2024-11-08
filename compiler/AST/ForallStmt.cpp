@@ -69,6 +69,20 @@ ForallStmt::ForallStmt(BlockStmt* body):
   optInfo.autoLocalAccessChecked = false;
   optInfo.hasAlignedFollowers = false;
 
+  // added by tbrolin
+  optInfo.adaptiveRemotePrefetchingChecked = false;
+  optInfo.arpID = -99;
+  optInfo.inspectorExecutorChecked = false;
+  optInfo.ieIndexIterator = NULL;
+  optInfo.inspectorFlag = NULL;
+  optInfo.ieID = -99;
+  optInfo.nonConstRefIE = false;
+  // we #define -2 in forallOptimizations.cpp to
+  // represent a forall that has not been analyzed
+  // w.r.t. the function ID.
+  optInfo.functionID = -2;
+  optInfo.irregWriteAggregationChecked = false;
+
   gForallStmts.add(this);
 }
 
@@ -96,6 +110,16 @@ ForallStmt* ForallStmt::copyInner(SymbolMap* map) {
   _this->fRecIterGetIterator  = COPY_INT(fRecIterGetIterator);
   _this->fRecIterFreeIterator = COPY_INT(fRecIterFreeIterator);
   _this->fZipCall             = COPY_INT(fZipCall);
+
+  // added by tbrolin: copy over certain things when we clone
+  // a forall
+  _this->optInfo.arpID = optInfo.arpID;
+  _this->optInfo.cloneTypeIE = optInfo.cloneTypeIE;
+  _this->optInfo.indexIteratorType = optInfo.indexIteratorType;
+  _this->optInfo.inspectorFlag = optInfo.inspectorFlag;
+  _this->optInfo.ieID = optInfo.ieID;
+  _this->optInfo.functionID = optInfo.functionID;
+  _this->optInfo.nonConstRefIE = optInfo.nonConstRefIE;
 
   return _this;
 }
@@ -613,6 +637,9 @@ ForallStmt* ForallStmt::buildHelper(Expr* indices, Expr* iterator,
   fsDestructureIndices(fs, indices);
   fsVerifyNumIterables(fs);
   adjustReduceOpNames(fs);
+
+  // added by tbrolin
+  fs->optInfo.cloneTypeIE = ORIGINAL;
 
   return fs;
 }
