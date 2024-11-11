@@ -86,6 +86,13 @@ module ChapelStandard {
   public use InspectorExecutor;
   public use AutoRemoteWriteAggregation;
 
+  // added by tbrolin
+  public use AdaptiveRemoteCachePrefetching;
+  public use CommunicationSchedule;
+  public use SelectiveDataReplication;
+  public use InspectorExecutor;
+  public use AutoRemoteWriteAggregation;
+
   // Standard modules.
   public use Types as Types;
   public use AutoMath as AutoMath;
